@@ -15,54 +15,10 @@
 cmake_minimum_required(VERSION 3.18)
 project(manifold LANGUAGES CXX)
 
-set(CMAKE_VERBOSE_MAKEFILE ON)
+set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 set(MANIFOLD_PAR "NONE" CACHE STRING "Parallel backend, either \"TBB\" or \"NONE\"")
 set(MANIFOLD_FLAGS "" CACHE STRING "Manifold compiler flags")
-option(MANIFOLD_EXPORT "Build mesh export (via assimp) utility library" OFF)
-option(MANIFOLD_TEST "Enable testing suite" ON)
-option(MANIFOLD_DEBUG "Enable debug tracing/timing" OFF)
-
-option(MANIFOLD_PYBIND "Build python bindings" ON)
-option(MANIFOLD_CBIND "Build C (FFI) bindings" OFF)
-option(MANIFOLD_JSBIND "Build js binding" ${EMSCRIPTEN})
-
-option(TRACY_ENABLE "Use tracy profiling" OFF) 
-option(TRACY_MEMORY_USAGE "Track memory allocation with tracy (expensive)" OFF)
-option(BUILD_TEST_CGAL "Build CGAL performance comparisons" OFF)
-if(TRACY_ENABLE)
-  option(CMAKE_BUILD_TYPE "Build type" RelWithDebInfo)
-  if(TRACY_MEMORY_USAGE)
-    set(MANIFOLD_FLAGS ${MANIFOLD_FLAGS} -DTRACY_MEMORY_USAGE)
-  endif()
-  if(NOT MSVC)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-omit-frame-pointer")
-  endif()
-else()
-  option(CMAKE_BUILD_TYPE "Build type" Release)
-endif()
-
-if(EMSCRIPTEN)
-  message("Building for Emscripten")
-  set(MANIFOLD_FLAGS -fexceptions -D_LIBCUDACXX_HAS_THREAD_API_EXTERNAL -D_LIBCUDACXX_HAS_THREAD_API_CUDA)
-  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -sALLOW_MEMORY_GROWTH=1 -fexceptions -sDISABLE_EXCEPTION_CATCHING=0")
-  set(MANIFOLD_PYBIND OFF)
-endif()
-
-if(MANIFOLD_PYBIND)
-  set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-  if(Python_VERSION VERSION_LESS 3.12)
-    find_package(Python COMPONENTS Interpreter Development.Module REQUIRED)
-  else()
-    find_package(Python COMPONENTS Interpreter Development.SABIModule REQUIRED)
-  endif()
-endif()
-
-if(CMAKE_EXPORT_COMPILE_COMMANDS AND NOT EMSCRIPTEN)
-  # for nixos
-  set(CMAKE_CXX_STANDARD_INCLUDE_DIRECTORIES 
-      ${CMAKE_CXX_IMPLICIT_INCLUDE_DIRECTORIES})
-endif()
 
 if (MSVC)
   set(MANIFOLD_FLAGS ${MANIFOLD_FLAGS} /DNOMINMAX)
@@ -75,23 +31,26 @@ else()
   set(MANIFOLD_FLAGS ${MANIFOLD_FLAGS} ${WARNING_FLAGS} -O3)
 endif()
 
-if(CODE_COVERAGE AND NOT MSVC)
-  set(COVERAGE_FLAGS -coverage -fno-inline-small-functions -fkeep-inline-functions -fkeep-static-functions)
-  set(MANIFOLD_FLAGS ${MANIFOLD_FLAGS} ${COVERAGE_FLAGS})
-  add_link_options("-coverage")
-endif()
+if (NOT DEFINED BIN_DIR)
+  set(BIN_DIR bin)
+endif (NOT DEFINED BIN_DIR)
 
-include(GNUInstallDirs)
+if (NOT DEFINED LIB_DIR)
+  set(LIB_DIR lib)
+endif (NOT DEFINED LIB_DIR)
+
+if (NOT DEFINED INCLUDE_DIR)
+  set(INCLUDE_DIR include)
+endif (NOT DEFINED INCLUDE_DIR)
+
 
 add_subdirectory(src)
-add_subdirectory(bindings)
+add_subdirectory(include)
 
-if(MANIFOLD_EXPORT)
-  add_subdirectory(meshIO)
-endif()
+# Local Variables:
+# tab-width: 8
+# mode: cmake
+# indent-tabs-mode: t
+# End:
+# ex: shiftwidth=2 tabstop=8
 
-if(MANIFOLD_TEST)
-  add_subdirectory(samples)
-  add_subdirectory(test)
-  add_subdirectory(extras)
-endif()

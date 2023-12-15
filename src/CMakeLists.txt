@@ -38,9 +38,17 @@ set(MANIFOLD_SRCS
   sdf/src/sdf.cpp
   )
 
+if (ASSETIMPORT_LIBRARY)
+  set(MANIFOLD_SRCS
+    ${MANIFOLD_SRCS}
+    ../meshIO/src/meshIO.cpp
+    )
+endif (ASSETIMPORT_LIBRARY)
+
 add_library(manifold SHARED ${MANIFOLD_SRCS})
 target_include_directories(manifold PUBLIC
   ${PROJECT_SOURCE_DIR}/include/manifold
+  ${PROJECT_SOURCE_DIR}/meshIO/include/manifold
   ${PROJECT_SOURCE_DIR}/src/collider/include
   ${PROJECT_SOURCE_DIR}/src/manifold/include
   ${PROJECT_SOURCE_DIR}/src/cross_section/include

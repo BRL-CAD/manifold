@@ -1,9 +1,19 @@
-install(FILES
+set(MANIFOLD_HDRS
   manifold/cross_section.h
   manifold/manifold.h
   manifold/public.h
   manifold/sdf.h
-  DESTINATION ${INCLUDE_DIR}/manifold
+  )
+
+if (ASSETIMPORT_LIBRARY)
+  set(MANIFOLD_HDRS
+    ${MANIFOLD_HDRS}
+    ../meshIO/include/meshIO.h
+    )
+endif (ASSETIMPORT_LIBRARY)
+
+install(FILES ${MANIFOLD_HDRS}
+    DESTINATION ${INCLUDE_DIR}/manifold
   )
 
 

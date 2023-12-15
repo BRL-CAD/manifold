@@ -22,6 +22,7 @@
 #include "hashtable.h"
 #include "mesh_fixes.h"
 #include "par.h"
+#include "svd.h"
 
 namespace {
 using namespace manifold;
@@ -320,6 +321,7 @@ int GetLabels(std::vector<int>& components,
 
 void DedupePropVerts(manifold::Vec<glm::ivec3>& triProp,
                      const Vec<thrust::pair<int, int>>& vert2vert) {
+  ZoneScoped;
   std::vector<int> vertLabels;
   const int numLabels = GetLabels(vertLabels, vert2vert, vert2vert.size());
 
@@ -581,6 +583,7 @@ Manifold::Impl::Impl(Shape shape) {
 }
 
 void Manifold::Impl::RemoveUnreferencedVerts(Vec<glm::ivec3>& triVerts) {
+  ZoneScoped;
   Vec<int> vertOld2New(NumVert() + 1, 0);
   auto policy = autoPolicy(NumVert());
   for_each(policy, triVerts.cbegin(), triVerts.cend(),
@@ -613,6 +616,7 @@ void Manifold::Impl::InitializeOriginal() {
 }
 
 void Manifold::Impl::CreateFaces(const std::vector<float>& propertyTolerance) {
+  ZoneScoped;
   Vec<float> propertyToleranceD =
       propertyTolerance.empty() ? Vec<float>(meshRelation_.numProp, kTolerance)
                                 : propertyTolerance;
@@ -661,6 +665,7 @@ void Manifold::Impl::CreateFaces(const std::vector<float>& propertyTolerance) {
  * Create the halfedge_ data structure from an input triVerts array like Mesh.
  */
 void Manifold::Impl::CreateHalfedges(const Vec<glm::ivec3>& triVerts) {
+  ZoneScoped;
   const int numTri = triVerts.size();
   const int numHalfedge = 3 * numTri;
   // drop the old value first to avoid copy
@@ -730,6 +735,7 @@ void Manifold::Impl::Warp(std::function<void(glm::vec3&)> warpFunc) {
 }
 
 Manifold::Impl Manifold::Impl::Transform(const glm::mat4x3& transform_) const {
+  ZoneScoped;
   if (transform_ == glm::mat4x3(1.0f)) return *this;
   auto policy = autoPolicy(NumVert());
   Impl result;
@@ -776,11 +782,8 @@ Manifold::Impl Manifold::Impl::Transform(const glm::mat4x3& transform_) const {
   if (!result.collider_.Transform(transform_)) result.Update();
 
   result.CalculateBBox();
-  float scale = 0;
-  for (int i : {0, 1, 2})
-    scale =
-        glm::max(scale, transform_[0][i] + transform_[1][i] + transform_[2][i]);
-  result.precision_ *= scale;
+  // Scale the precision by the norm of the 3x3 portion of the transform.
+  result.precision_ *= SpectralNorm(glm::mat3(transform_));
   // Maximum of inherited precision loss and translational precision loss.
   result.SetPrecision(result.precision_);
   return result;
@@ -807,6 +810,7 @@ void Manifold::Impl::SetPrecision(float minPrecision) {
  * recalculation.
  */
 void Manifold::Impl::CalculateNormals() {
+  ZoneScoped;
   vertNormal_.resize(NumVert());
   auto policy = autoPolicy(NumTri());
   fill(policy, vertNormal_.begin(), vertNormal_.end(), glm::vec3(0));
@@ -849,6 +853,7 @@ void Manifold::Impl::IncrementMeshIDs() {
  */
 SparseIndices Manifold::Impl::EdgeCollisions(const Impl& Q,
                                              bool inverted) const {
+  ZoneScoped;
   Vec<TmpEdge> edges = CreateTmpEdges(Q.halfedge_);
   const int numEdge = edges.size();
   Vec<Box> QedgeBB(numEdge);
@@ -877,6 +882,7 @@ SparseIndices Manifold::Impl::EdgeCollisions(const Impl& Q,
  */
 SparseIndices Manifold::Impl::VertexCollisionsZ(
     VecView<const glm::vec3> vertsIn, bool inverted) const {
+  ZoneScoped;
   if (inverted)
     return collider_.Collisions<false, true>(vertsIn);
   else

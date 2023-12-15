@@ -101,6 +101,7 @@ std::tuple<Vec<int>, Vec<int>> SizeOutput(
     const Vec<int> &i03, const Vec<int> &i30, const Vec<int> &i12,
     const Vec<int> &i21, const SparseIndices &p1q2, const SparseIndices &p2q1,
     bool invertQ) {
+  ZoneScoped;
   Vec<int> sidesPerFacePQ(inP.NumTri() + inQ.NumTri(), 0);
   auto sidesPerFaceP = sidesPerFacePQ.view(0, inP.NumTri());
   auto sidesPerFaceQ = sidesPerFacePQ.view(inP.NumTri(), inQ.NumTri());
@@ -167,6 +168,7 @@ void AddNewEdgeVerts(
     concurrent_map<std::pair<int, int>, std::vector<EdgePos>> &edgesNew,
     const SparseIndices &p1q2, const Vec<int> &i12, const Vec<int> &v12R,
     const Vec<Halfedge> &halfedgeP, bool forward) {
+  ZoneScoped;
   // For each edge of P that intersects a face of Q (p1q2), add this vertex to
   // P's corresponding edge vector and to the two new edges, which are
   // intersections between the face of Q and the two faces of P attached to the
@@ -256,6 +258,7 @@ void AppendPartialEdges(Manifold::Impl &outR, Vec<char> &wholeHalfedgeP,
                         Vec<TriRef> &halfedgeRef, const Manifold::Impl &inP,
                         const Vec<int> &i03, const Vec<int> &vP2R,
                         const Vec<int>::IterC faceP2R, bool forward) {
+  ZoneScoped;
   // Each edge in the map is partially retained; for each of these, look up
   // their original verts and include them based on their winding number (i03),
   // while remapping them to the output using vP2R. Use the verts position
@@ -282,7 +285,6 @@ void AppendPartialEdges(Manifold::Impl &outR, Vec<char> &wholeHalfedgeP,
     }
 
     int inclusion = i03[vStart];
-    bool reversed = inclusion < 0;
     EdgePos edgePos = {vP2R[vStart],
                        glm::dot(outR.vertPos_[vP2R[vStart]], edgeVec),
                        inclusion > 0};
@@ -292,7 +294,6 @@ void AppendPartialEdges(Manifold::Impl &outR, Vec<char> &wholeHalfedgeP,
     }
 
     inclusion = i03[vEnd];
-    reversed |= inclusion < 0;
     edgePos = {vP2R[vEnd], glm::dot(outR.vertPos_[vP2R[vEnd]], edgeVec),
                inclusion < 0};
     for (int j = 0; j < glm::abs(inclusion); ++j) {
@@ -337,6 +338,7 @@ void AppendNewEdges(
     Manifold::Impl &outR, Vec<int> &facePtrR,
     concurrent_map<std::pair<int, int>, std::vector<EdgePos>> &edgesNew,
     Vec<TriRef> &halfedgeRef, const Vec<int> &facePQ2R, const int numFaceP) {
+  ZoneScoped;
   // Pair up each edge's verts and distribute to faces based on indices in key.
   Vec<Halfedge> &halfedgeR = outR.halfedge_;
   Vec<glm::vec3> &vertPosR = outR.vertPos_;
@@ -399,7 +401,6 @@ struct DuplicateHalfedges {
     if (!thrust::get<0>(in)) return;
     Halfedge halfedge = thrust::get<1>(in);
     if (!halfedge.IsForward()) return;
-    const int edgeP = thrust::get<2>(in);
 
     const int inclusion = i03[halfedge.startVert];
     if (inclusion == 0) return;
@@ -442,6 +443,7 @@ void AppendWholeEdges(Manifold::Impl &outR, Vec<int> &facePtrR,
                       const Vec<char> wholeHalfedgeP, const Vec<int> &i03,
                       const Vec<int> &vP2R, VecView<const int> faceP2R,
                       bool forward) {
+  ZoneScoped;
   for_each_n(ManifoldParams().deterministic ? ExecutionPolicy::Seq
                                             : autoPolicy(inP.halfedge_.size()),
              zip(wholeHalfedgeP.begin(), inP.halfedge_.begin(), countAt(0)),
@@ -463,9 +465,8 @@ struct MapTriRef {
   }
 };
 
-Vec<TriRef> UpdateReference(Manifold::Impl &outR, const Manifold::Impl &inP,
-                            const Manifold::Impl &inQ, bool invertQ) {
-  Vec<TriRef> refPQ = outR.meshRelation_.triRef;
+void UpdateReference(Manifold::Impl &outR, const Manifold::Impl &inP,
+                     const Manifold::Impl &inQ, bool invertQ) {
   const int offsetQ = Manifold::Impl::meshIDCounter_;
   for_each_n(
       autoPolicy(outR.NumTri()), outR.meshRelation_.triRef.begin(),
@@ -480,7 +481,6 @@ Vec<TriRef> UpdateReference(Manifold::Impl &outR, const Manifold::Impl &inP,
     outR.meshRelation_.meshIDtransform[pair.first + offsetQ].backSide ^=
         invertQ;
   }
-  return refPQ;
 }
 
 struct Barycentric {
@@ -514,8 +514,9 @@ struct Barycentric {
   }
 };
 
-void CreateProperties(Manifold::Impl &outR, const Vec<TriRef> &refPQ,
-                      const Manifold::Impl &inP, const Manifold::Impl &inQ) {
+void CreateProperties(Manifold::Impl &outR, const Manifold::Impl &inP,
+                      const Manifold::Impl &inQ) {
+  ZoneScoped;
   const int numPropP = inP.NumProp();
   const int numPropQ = inQ.NumProp();
   const int numProp = glm::max(numPropP, numPropQ);
@@ -526,7 +527,8 @@ void CreateProperties(Manifold::Impl &outR, const Vec<TriRef> &refPQ,
   outR.meshRelation_.triProperties.resize(numTri);
 
   Vec<glm::vec3> bary(outR.halfedge_.size());
-  for_each_n(autoPolicy(numTri), zip(countAt(0), refPQ.cbegin()), numTri,
+  for_each_n(autoPolicy(numTri),
+             zip(countAt(0), outR.meshRelation_.triRef.cbegin()), numTri,
              Barycentric({bary, inP.vertPos_, inQ.vertPos_, outR.vertPos_,
                           inP.halfedge_, inQ.halfedge_, outR.halfedge_,
                           outR.precision_}));
@@ -534,6 +536,9 @@ void CreateProperties(Manifold::Impl &outR, const Vec<TriRef> &refPQ,
   using Entry = std::pair<glm::ivec3, int>;
   int idMissProp = outR.NumVert();
   std::vector<std::vector<Entry>> propIdx(outR.NumVert() + 1);
+  std::vector<int> propMissIdx[2];
+  propMissIdx[0].resize(inQ.NumPropVert(), -1);
+  propMissIdx[1].resize(inP.NumPropVert(), -1);
   outR.meshRelation_.properties.reserve(outR.NumVert() * numProp);
   int idx = 0;
 
@@ -541,14 +546,14 @@ void CreateProperties(Manifold::Impl &outR, const Vec<TriRef> &refPQ,
     // Skip collapsed triangles
     if (outR.halfedge_[3 * tri].startVert < 0) continue;
 
-    const int triPQ = refPQ[tri].tri;
-    const bool PQ = refPQ[tri].meshID == 0;
+    const TriRef ref = outR.meshRelation_.triRef[tri];
+    const bool PQ = ref.meshID == 0;
     const int oldNumProp = PQ ? numPropP : numPropQ;
     const auto &properties =
         PQ ? inP.meshRelation_.properties : inQ.meshRelation_.properties;
     const glm::ivec3 &triProp = oldNumProp == 0 ? glm::ivec3(-1)
-                                : PQ ? inP.meshRelation_.triProperties[triPQ]
-                                     : inQ.meshRelation_.triProperties[triPQ];
+                                : PQ ? inP.meshRelation_.triProperties[ref.tri]
+                                     : inQ.meshRelation_.triProperties[ref.tri];
 
     for (const int i : {0, 1, 2}) {
       const int vert = outR.halfedge_[3 * tri + i].startVert;
@@ -556,8 +561,7 @@ void CreateProperties(Manifold::Impl &outR, const Vec<TriRef> &refPQ,
 
       glm::ivec4 key(PQ, idMissProp, -1, -1);
       if (oldNumProp > 0) {
-        key[1] = vert;
-        int edge = -1;
+        int edge = -2;
         for (const int j : {0, 1, 2}) {
           if (uvw[j] == 1) {
             // On a retained vert, the propVert must also match
@@ -571,24 +575,37 @@ void CreateProperties(Manifold::Impl &outR, const Vec<TriRef> &refPQ,
           // On an edge, both propVerts must match
           const int p0 = triProp[Next3(edge)];
           const int p1 = triProp[Prev3(edge)];
+          key[1] = vert;
           key[2] = glm::min(p0, p1);
           key[3] = glm::max(p0, p1);
+        } else if (edge == -2) {
+          key[1] = vert;
         }
       }
 
-      auto &bin = propIdx[key.y];
-      bool bFound = false;
-      for (int k = 0; k < bin.size(); ++k) {
-        if (bin[k].first == glm::ivec3(key.x, key.z, key.w)) {
-          bFound = true;
-          outR.meshRelation_.triProperties[tri][i] = bin[k].second;
-          break;
+      if (key.y == idMissProp && key.z >= 0) {
+        // only key.x/key.z matters
+        auto &entry = propMissIdx[key.x][key.z];
+        if (entry >= 0) {
+          outR.meshRelation_.triProperties[tri][i] = entry;
+          continue;
         }
+        entry = idx;
+      } else {
+        auto &bin = propIdx[key.y];
+        bool bFound = false;
+        for (int k = 0; k < bin.size(); ++k) {
+          if (bin[k].first == glm::ivec3(key.x, key.z, key.w)) {
+            bFound = true;
+            outR.meshRelation_.triProperties[tri][i] = bin[k].second;
+            break;
+          }
+        }
+        if (bFound) continue;
+        bin.push_back(std::make_pair(glm::ivec3(key.x, key.z, key.w), idx));
       }
-      if (bFound) continue;
-      bin.push_back(std::make_pair(glm::ivec3(key.x, key.z, key.w), idx));
+
       outR.meshRelation_.triProperties[tri][i] = idx++;
-
       for (int p = 0; p < numProp; ++p) {
         if (p < oldNumProp) {
           glm::vec3 oldProps;
@@ -724,7 +741,6 @@ Manifold::Impl Boolean3::Result(OpType op) const {
   std::tie(faceEdge, facePQ2R) =
       SizeOutput(outR, inP_, inQ_, i03, i30, i12, i21, p1q2_, p2q1_, invertQ);
 
-  const int numFaceR = faceEdge.size() - 1;
   // This gets incremented for each halfedge that's added to a face so that the
   // next one knows where to slot in.
   Vec<int> facePtrR = faceEdge;
@@ -770,11 +786,11 @@ Manifold::Impl Boolean3::Result(OpType op) const {
   if (ManifoldParams().intermediateChecks)
     ASSERT(outR.IsManifold(), logicErr, "triangulated mesh is not manifold!");
 
-  Vec<TriRef> refPQ = UpdateReference(outR, inP_, inQ_, invertQ);
+  CreateProperties(outR, inP_, inQ_);
+
+  UpdateReference(outR, inP_, inQ_, invertQ);
 
   outR.SimplifyTopology();
-
-  CreateProperties(outR, refPQ, inP_, inQ_);
 
   if (ManifoldParams().intermediateChecks)
     ASSERT(outR.Is2Manifold(), logicErr, "simplified mesh is not 2-manifold!");

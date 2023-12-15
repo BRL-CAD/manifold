@@ -13,26 +13,17 @@
 // limitations under the License.
 
 #include "polygon.h"
-#if MANIFOLD_PAR == 'T'
-#include "tbb/tbb.h"
-#endif
 
 #include <algorithm>
-#include <numeric>
-#if MANIFOLD_PAR == 'T' && TBB_INTERFACE_VERSION >= 10000 && \
-    __has_include(<pstl/glue_execution_defs.h>)
-#include <execution>
-#endif
 #include <list>
 #include <map>
-#if __has_include(<memory_resource>)
-#include <memory_resource>
-#endif
+#include <numeric>
 #include <queue>
 #include <set>
 #include <stack>
 
 #include "optional_assert.h"
+#include "utils.h"
 
 namespace {
 using namespace manifold;
@@ -181,6 +172,8 @@ void PrintFailure(const std::exception &e, const PolygonsIdx &polys,
 class EarClip {
  public:
   EarClip(const PolygonsIdx &polys, float precision) : precision_(precision) {
+    ZoneScoped;
+
     int numVert = 0;
     for (const SimplePolygonIdx &poly : polys) {
       numVert += poly.size();
@@ -199,6 +192,8 @@ class EarClip {
   }
 
   std::vector<glm::ivec3> Triangulate() {
+    ZoneScoped;
+
     for (const VertItr start : holes_) {
       CutKeyhole(start);
     }
@@ -286,7 +281,8 @@ class EarClip {
       VertItr center = tail;
       VertItr last = center;
 
-      while (nextL != nextR && tail != nextR) {
+      while (nextL != nextR && tail != nextR &&
+             nextL != (toLeft ? right : left)) {
         const glm::vec2 edgeL = nextL->pos - center->pos;
         const float l2 = glm::dot(edgeL, edgeL);
         if (l2 <= p2) {
@@ -550,6 +546,9 @@ class EarClip {
       auto vert = poly.begin();
       polygon_.push_back({vert->idx, earsQueue_.end(), vert->pos});
       const VertItr first = std::prev(polygon_.end());
+
+      bound = glm::max(
+          bound, glm::max(glm::abs(first->pos.x), glm::abs(first->pos.y)));
       VertItr last = first;
       // This is not the real rightmost start, but just an arbitrary vert for
       // now to identify each polygon.
@@ -578,6 +577,8 @@ class EarClip {
   // Find the actual rightmost starts after degenerate removal. Also calculate
   // the polygon bounding boxes.
   void FindStart(VertItr first) {
+    const glm::vec2 origin = first->pos;
+
     VertItr start = first;
     float maxX = -std::numeric_limits<float>::infinity();
     Rect bBox;
@@ -587,7 +588,8 @@ class EarClip {
 
     auto AddPoint = [&](VertItr v) {
       bBox.Union(v->pos);
-      const double area1 = glm::determinant(glm::dmat2(v->pos, v->right->pos));
+      const double area1 =
+          glm::determinant(glm::dmat2(v->pos - origin, v->right->pos - origin));
       const double t1 = area + area1;
       areaCompensation += (area - t1) + area1;
       area = t1;
@@ -605,9 +607,9 @@ class EarClip {
 
     area += areaCompensation;
     const glm::vec2 size = bBox.Size();
-    const double minArea = precision_ * glm::max(size.x, size.y);
+    const float minArea = precision_ * glm::max(size.x, size.y);
 
-    if (area < -minArea) {
+    if (glm::isfinite(maxX) && area < -minArea) {
       holes_.insert(start);
       hole2BBox_.insert({start, bBox});
     } else {
@@ -623,7 +625,6 @@ class EarClip {
   // incorrect due to precision, we check for polygon edges both ahead and
   // behind to ensure all valid options are found.
   void CutKeyhole(const VertItr start) {
-    const float startX = start->pos.x;
     const Rect bBox = hole2BBox_[start];
     const int onTop = start->pos.y >= bBox.max.y - precision_   ? 1
                       : start->pos.y <= bBox.min.y + precision_ ? -1
@@ -668,7 +669,6 @@ class EarClip {
   // and returns it. It does so by finding any reflex verts inside the triangle
   // containing the best connection and the initial horizontal line.
   VertItr FindCloserBridge(VertItr start, VertItr edge, int onTop) {
-    const float p2 = precision_ * precision_;
     VertItr best = edge->pos.x > edge->right->pos.x ? edge : edge->right;
     const float maxX = best->pos.x;
     const float above = best->pos.y > start->pos.y ? 1 : -1;
@@ -743,6 +743,8 @@ class EarClip {
   // The main ear-clipping loop. This is called once for each simple polygon -
   // all holes have already been key-holed and joined to an outer polygon.
   void TriangulatePoly(VertItr start) {
+    ZoneScoped;
+
     // A simple polygon always creates two fewer triangles than it has verts.
     int numTri = -2;
     earsQueue_.clear();

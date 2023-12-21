@@ -48,7 +48,7 @@ endif (ASSETIMPORT_LIBRARY)
 add_library(manifold SHARED ${MANIFOLD_SRCS})
 target_include_directories(manifold PUBLIC
   ${PROJECT_SOURCE_DIR}/include/manifold
-  ${PROJECT_SOURCE_DIR}/meshIO/include/manifold
+  ${PROJECT_SOURCE_DIR}/meshIO/include
   ${PROJECT_SOURCE_DIR}/src/collider/include
   ${PROJECT_SOURCE_DIR}/src/manifold/include
   ${PROJECT_SOURCE_DIR}/src/cross_section/include

@@ -43,6 +43,7 @@ if (ASSETIMPORT_LIBRARY)
     ${MANIFOLD_SRCS}
     ../meshIO/src/meshIO.cpp
     )
+    include_directories(${ASSETIMPORT_INCLUDE_DIR})
 endif (ASSETIMPORT_LIBRARY)
 
 add_library(manifold SHARED ${MANIFOLD_SRCS})

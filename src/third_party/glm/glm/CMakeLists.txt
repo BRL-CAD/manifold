@@ -70,9 +70,15 @@ add_library(glm_shared SHARED ${ROOT_TEXT} ${ROOT_MD} ${ROOT_NAT}
 endif()
 
 install(FILES ${ROOT_HEADER} DESTINATION include/manifold/glm)
+install(FILES ${ROOT_INLINE} DESTINATION include/manifold/glm)
 install(FILES ${CORE_HEADER} DESTINATION include/manifold/glm/detail)
+install(FILES ${CORE_INLINE} DESTINATION include/manifold/glm/detail)
 install(FILES ${EXT_HEADER} DESTINATION include/manifold/glm/ext)
+install(FILES ${EXT_INLINE} DESTINATION include/manifold/glm/ext)
 install(FILES ${GTC_HEADER} DESTINATION include/manifold/glm/gtc)
+install(FILES ${GTC_INLINE} DESTINATION include/manifold/glm/gtc)
 install(FILES ${GTX_HEADER} DESTINATION include/manifold/glm/gtx)
+install(FILES ${GTX_INLINE} DESTINATION include/manifold/glm/gtx)
 install(FILES ${SIMD_HEADER} DESTINATION include/manifold/glm/simd)
+install(FILES ${SIMD_INLINE} DESTINATION include/manifold/glm/simd)
 

@@ -68,3 +68,11 @@ add_library(glm_shared SHARED ${ROOT_TEXT} ${ROOT_MD} ${ROOT_NAT}
 	target_link_libraries(glm_shared PUBLIC glm)
 	add_library(glm::glm_shared ALIAS glm_shared)
 endif()
+
+install(FILES ${ROOT_HEADER} DESTINATION include/manifold/glm)
+install(FILES ${CORE_HEADER} DESTINATION include/manifold/glm/detail)
+install(FILES ${EXT_HEADER} DESTINATION include/manifold/glm/ext)
+install(FILES ${GTC_HEADER} DESTINATION include/manifold/glm/gtc)
+install(FILES ${GTX_HEADER} DESTINATION include/manifold/glm/gtx)
+install(FILES ${SIMD_HEADER} DESTINATION include/manifold/glm/simd)
+

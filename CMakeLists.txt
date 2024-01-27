@@ -49,6 +49,7 @@ endif (NOT DEFINED INCLUDE_DIR)
 
 add_subdirectory(src)
 add_subdirectory(include)
+add_subdirectory(src/third_party/glm/glm)
 
 # Local Variables:
 # tab-width: 8

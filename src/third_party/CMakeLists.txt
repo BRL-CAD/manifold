@@ -1,3 +1,5 @@
+add_subdirectory(glm)
+
 add_library(quickhull OBJECT quickhull/QuickHull.cpp)
 target_include_directories(quickhull PUBLIC
     $<INSTALL_INTERFACE:quickhull>

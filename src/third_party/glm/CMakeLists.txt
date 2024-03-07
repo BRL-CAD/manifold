@@ -23,7 +23,7 @@ endif()
 
 option(GLM_BUILD_LIBRARY "Build dynamic/static library" ON)
 option(GLM_BUILD_TESTS "Build the test programs" ${GLM_IS_MASTER_PROJECT})
-option(GLM_BUILD_INSTALL "Generate the install target" ${GLM_IS_MASTER_PROJECT})
+option(GLM_BUILD_INSTALL "Generate the install target" ON)
 
 include(GNUInstallDirs)
 

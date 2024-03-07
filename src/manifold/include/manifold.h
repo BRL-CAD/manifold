@@ -109,10 +109,10 @@ struct MeshGL {
   /// edge shorter than precision may be collapsed.
   float precision = 0;
 
-  MANIFOLD_EXPORT MeshGL() = default;
-  MANIFOLD_EXPORT MeshGL(const Mesh& mesh);
+  MeshGL() = default;
+  MeshGL(const Mesh& mesh);
 
-  MANIFOLD_EXPORT bool Merge();
+  bool Merge();
 };
 /** @} */
 
@@ -151,15 +151,15 @@ class Manifold {
    *  Constructors
    */
   ///@{
-  MANIFOLD_EXPORT Manifold();
-  MANIFOLD_EXPORT ~Manifold();
-  MANIFOLD_EXPORT Manifold(const Manifold& other);
-  MANIFOLD_EXPORT Manifold& operator=(const Manifold& other);
-  MANIFOLD_EXPORT Manifold(Manifold&&) noexcept;
-  MANIFOLD_EXPORT Manifold& operator=(Manifold&&) noexcept;
+  Manifold();
+  ~Manifold();
+  Manifold(const Manifold& other);
+  Manifold& operator=(const Manifold& other);
+  Manifold(Manifold&&) noexcept;
+  Manifold& operator=(Manifold&&) noexcept;
 
-  MANIFOLD_EXPORT Manifold(const MeshGL&, const std::vector<float>& propertyTolerance = {});
-  MANIFOLD_EXPORT Manifold(const Mesh&);
+  Manifold(const MeshGL&, const std::vector<float>& propertyTolerance = {});
+  Manifold(const Mesh&);
 
   static Manifold Smooth(const MeshGL&,
                          const std::vector<Smoothness>& sharpenedEdges = {});
@@ -191,8 +191,8 @@ class Manifold {
    *  Details of the manifold
    */
   ///@{
-  MANIFOLD_EXPORT Mesh GetMesh() const;
-  MANIFOLD_EXPORT MeshGL GetMeshGL(glm::ivec3 normalIdx = glm::ivec3(0)) const;
+  Mesh GetMesh() const;
+  MeshGL GetMeshGL(glm::ivec3 normalIdx = glm::ivec3(0)) const;
   bool IsEmpty() const;
   enum class Error {
     NoError,
@@ -208,7 +208,7 @@ class Manifold {
     FaceIDWrongLength,
     InvalidConstruction,
   };
-  MANIFOLD_EXPORT Error Status() const;
+  Error Status() const;
   int NumVert() const;
   int NumEdge() const;
   int NumTri() const;
@@ -253,7 +253,7 @@ class Manifold {
    *  Combine two manifolds
    */
   ///@{
-  MANIFOLD_EXPORT Manifold Boolean(const Manifold& second, OpType op) const;
+  Manifold Boolean(const Manifold& second, OpType op) const;
   static Manifold BatchBoolean(const std::vector<Manifold>& manifolds,
                                OpType op);
   // Boolean operation shorthand

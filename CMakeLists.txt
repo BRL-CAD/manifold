@@ -15,7 +15,9 @@
 cmake_minimum_required(VERSION 3.18)
 project(manifold LANGUAGES CXX)
 
-set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/CMake")
+
+set(CMAKE_VERBOSE_MAKEFILE ON)
 
 set(MANIFOLD_PAR "NONE" CACHE STRING "Parallel backend, either \"TBB\" or \"NONE\"")
 set(MANIFOLD_FLAGS "" CACHE STRING "Manifold compiler flags")
@@ -25,7 +27,7 @@ option(MANIFOLD_TEST "Enable testing suite" ON)
 option(MANIFOLD_FUZZ "Enable fuzzing tests" OFF)
 option(MANIFOLD_DEBUG "Enable debug tracing/timing" OFF)
 option(MANIFOLD_PYBIND "Build python bindings" OFF)
-option(MANIFOLD_CBIND "Build C (FFI) bindings" ON)
+option(MANIFOLD_CBIND "Build C (FFI) bindings" OFF)
 option(MANIFOLD_JSBIND "Build js binding" ${EMSCRIPTEN})
 option(BUILD_SHARED_LIBS "Build shared library" ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -65,7 +67,7 @@ if(EMSCRIPTEN)
   set(BUILD_SHARED_LIBS OFF)
 endif()
 
-include(${CMAKE_CURRENT_SOURCE_DIR}/manifoldDeps.cmake)
+#include(${CMAKE_CURRENT_SOURCE_DIR}/manifoldDeps.cmake)
 
 if(MANIFOLD_PYBIND)
   if(Python_VERSION VERSION_LESS 3.12)
@@ -94,17 +96,11 @@ else()
   set(MANIFOLD_FLAGS ${MANIFOLD_FLAGS} ${WARNING_FLAGS} -O3)
 endif()
 
-if (NOT DEFINED BIN_DIR)
-  set(BIN_DIR bin)
-endif (NOT DEFINED BIN_DIR)
-
-if (NOT DEFINED LIB_DIR)
-  set(LIB_DIR lib)
-endif (NOT DEFINED LIB_DIR)
-
-if (NOT DEFINED INCLUDE_DIR)
-  set(INCLUDE_DIR include)
-endif (NOT DEFINED INCLUDE_DIR)
+if(CODE_COVERAGE AND NOT MSVC)
+  set(COVERAGE_FLAGS -coverage -fno-inline-small-functions -fkeep-inline-functions -fkeep-static-functions)
+  set(MANIFOLD_FLAGS ${MANIFOLD_FLAGS} ${COVERAGE_FLAGS})
+  add_link_options("-coverage")
+endif()
 
 # installation rpath
 set(CMAKE_SKIP_BUILD_RPATH FALSE)
@@ -118,8 +114,7 @@ endif("${isSystemDir}" STREQUAL "-1")
 
 
 add_subdirectory(src)
-add_subdirectory(include)
-add_subdirectory(src/third_party/glm/glm)
+add_subdirectory(bindings)
 
 if(MANIFOLD_EXPORT)
   add_subdirectory(meshIO)

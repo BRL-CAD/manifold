@@ -18,17 +18,18 @@ add_library(${PROJECT_NAME} INTERFACE)
 message("Parallel Backend: ${MANIFOLD_PAR}")
 
 include(FetchContent)
-FetchContent_Declare(Thrust
-    GIT_REPOSITORY https://github.com/NVIDIA/thrust.git
-    GIT_TAG 2.1.0
-    GIT_SHALLOW TRUE
-    GIT_PROGRESS TRUE
-)
-find_package(Thrust QUIET)
-if(NOT Thrust_FOUND AND NOT DEFINED thrust_SOURCE_DIR)
-    message("thrust not found, downloading from source")
-    FetchContent_Populate(Thrust)
-endif()
+#FetchContent_Declare(Thrust
+#    GIT_REPOSITORY https://github.com/NVIDIA/thrust.git
+#    GIT_TAG 2.1.0
+#    GIT_SHALLOW TRUE
+#    GIT_PROGRESS TRUE
+#)
+#find_package(Thrust QUIET)
+#if(NOT Thrust_FOUND AND NOT DEFINED thrust_SOURCE_DIR)
+#    message("thrust not found, downloading from source")
+#    FetchContent_Populate(Thrust)
+#endif()
+set(thrust_SOURCE_DIR ${PROJECT_SOURCE_DIR}/../third_party/thrust)
 
 if (TRACY_ENABLE)
     include(FetchContent)
@@ -60,7 +61,7 @@ endif()
 target_include_directories(${PROJECT_NAME} INTERFACE
     $<INSTALL_INTERFACE:include/${CMAKE_PROJECT_NAME}>
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>)
-target_link_libraries(${PROJECT_NAME} INTERFACE glm::glm)
+#target_link_libraries(${PROJECT_NAME} INTERFACE glm::glm)
 
 if(NOT DEFINED thrust_SOURCE_DIR)
     set(thrust_SOURCE_DIR ${_THRUST_INCLUDE_DIR})

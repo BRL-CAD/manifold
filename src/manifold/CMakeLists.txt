@@ -15,14 +15,18 @@
 project (manifold)
 
 file(GLOB_RECURSE SOURCE_FILES CONFIGURE_DEPENDS *.cpp)
+set(SOURCE_FILES ${SOURCE_FILES}
+  	${PROJECT_SOURCE_DIR}/../third_party/quickhull/QuickHull.cpp)
 add_library(${PROJECT_NAME} ${SOURCE_FILES})
 
 target_include_directories(${PROJECT_NAME} PUBLIC
     $<INSTALL_INTERFACE:include/${CMAKE_PROJECT_NAME}>
-    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>)
+    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
+    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/../third_party/quickhull>
+	 )
 target_link_libraries(${PROJECT_NAME}
     PUBLIC utilities cross_section sdf
-    PRIVATE collider polygon ${MANIFOLD_INCLUDE} quickhull
+    PRIVATE collider polygon ${MANIFOLD_INCLUDE}
 )
 
 target_compile_options(${PROJECT_NAME} PRIVATE ${MANIFOLD_FLAGS})

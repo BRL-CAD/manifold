@@ -116,9 +116,9 @@ endif("${isSystemDir}" STREQUAL "-1")
 add_subdirectory(src)
 add_subdirectory(bindings)
 
-if(MANIFOLD_EXPORT)
-  add_subdirectory(meshIO)
-endif()
+#if(MANIFOLD_EXPORT)
+#  add_subdirectory(meshIO)
+#endif()
 
 if(MANIFOLD_TEST)
   add_subdirectory(samples)

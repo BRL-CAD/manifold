@@ -65,7 +65,7 @@ if(MANIFOLD_CBIND AND NOT EMSCRIPTEN)
 endif()
 
 if(MANIFOLD_EXPORT)
-  target_link_libraries(${PROJECT_NAME} meshIO)
+	#target_link_libraries(${PROJECT_NAME} meshIO)
   target_compile_options(${PROJECT_NAME} PUBLIC -DMANIFOLD_EXPORT)
 endif()
 

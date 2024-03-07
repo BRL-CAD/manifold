@@ -33,7 +33,7 @@ endif()
 
 if(MANIFOLD_EXPORT)
   add_executable(convertFile convert_file.cpp)
-  target_link_libraries(convertFile manifold meshIO)
+  target_link_libraries(convertFile manifold)
   target_compile_options(convertFile PRIVATE ${MANIFOLD_FLAGS})
   target_compile_features(convertFile PUBLIC cxx_std_17)
 endif()

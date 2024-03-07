@@ -29,7 +29,7 @@ class VecView {
   using Iter = T *;
   using IterC = const T *;
 
-  VecView(T *ptr_, size_t size_) : ptr_(ptr_), size_(size_) {}
+  VecView(T *iptr_, size_t isize_) : ptr_(iptr_), size_(isize_) {}
 
   VecView(const VecView &other) {
     ptr_ = other.ptr_;

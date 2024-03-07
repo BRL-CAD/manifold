@@ -59,7 +59,7 @@ struct Manifold::Impl {
 
   Impl() {}
   enum class Shape { Tetrahedron, Cube, Octahedron };
-  Impl(Shape);
+  Impl(Shape, const glm::mat4x3 = glm::mat4x3(1));
 
   Impl(const MeshGL&, std::vector<float> propertyTolerance = {});
   Impl(const Mesh&, const MeshRelationD& relation,
@@ -76,6 +76,7 @@ struct Manifold::Impl {
   void Update();
   void MarkFailure(Error status);
   void Warp(std::function<void(glm::vec3&)> warpFunc);
+  void WarpBatch(std::function<void(VecView<glm::vec3>)> warpFunc);
   Impl Transform(const glm::mat4x3& transform) const;
   SparseIndices EdgeCollisions(const Impl& B, bool inverted = false) const;
   SparseIndices VertexCollisionsZ(VecView<const glm::vec3> vertsIn,
@@ -137,7 +138,7 @@ struct Manifold::Impl {
 
   // smoothing.cu
   void CreateTangents(const std::vector<Smoothness>&);
-  Vec<Barycentric> Subdivide(int n);
-  void Refine(int n);
+  Vec<Barycentric> Subdivide(std::function<int(glm::vec3)>);
+  void Refine(std::function<int(glm::vec3)>);
 };
 }  // namespace manifold

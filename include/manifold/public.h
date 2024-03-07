@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #pragma once
+#define GLM_ENABLE_EXPERIMENTAL  // needed for glm/gtx/compatibility.hpp
 #define GLM_FORCE_EXPLICIT_CTOR
 #include <glm/ext/matrix_transform.hpp>
 #include <glm/glm.hpp>
@@ -30,25 +31,7 @@
 #include <sstream>
 #endif
 
-#if defined(_WIN32)
-# define COMPILER_DLLEXPORT __declspec(dllexport)
-# define COMPILER_DLLIMPORT __declspec(dllimport)
-#else
-# define COMPILER_DLLEXPORT __attribute__ ((visibility ("default")))
-# define COMPILER_DLLIMPORT __attribute__ ((visibility ("default")))
-#endif
-
-#ifndef MANIFOLD_EXPORT
-#  if defined(MANIFOLD_DLL_EXPORTS) && defined(MANIFOLD_DLL_IMPORTS)
-#    error "Only MANIFOLD_DLL_EXPORTS or MANIFOLD_DLL_IMPORTS can be defined, not both."
-#  elif defined(MANIFOLD_DLL_EXPORTS)
-#    define MANIFOLD_EXPORT COMPILER_DLLEXPORT
-#  elif defined(MANIFOLD_DLL_IMPORTS)
-#    define MANIFOLD_EXPORT COMPILER_DLLIMPORT
-#  else
-#    define MANIFOLD_EXPORT
-#  endif
-#endif
+constexpr std::size_t operator""_z(unsigned long long n) { return n; }
 
 namespace manifold {
 

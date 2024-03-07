@@ -26,7 +26,7 @@ If you prefer Python to JS/TS, make your own copy of the example notebook above.
 
 # Manifold
 
-[**API Documentation**](https://elalish.github.io/manifold/docs/html/modules.html) | [**Algorithm Documentation**](https://github.com/elalish/manifold/wiki/Manifold-Library) | [**Blog Posts**](https://elalish.blogspot.com/search/label/Manifold) | [**Web Examples**](https://elalish.github.io/manifold/model-viewer.html)
+[**API Documentation**](https://elalish.github.io/manifold/docs/html/topics.html) | [**Algorithm Documentation**](https://github.com/elalish/manifold/wiki/Manifold-Library) | [**Blog Posts**](https://elalish.blogspot.com/search/label/Manifold) | [**Web Examples**](https://elalish.github.io/manifold/model-viewer.html)
 
 [Manifold](https://github.com/elalish/manifold) is a geometry library dedicated to creating and operating on manifold triangle meshes. A [manifold mesh](https://github.com/elalish/manifold/wiki/Manifold-Library#manifoldness) is a mesh that represents a solid object, and so is very important in manufacturing, CAD, structural analysis, etc. Further information can be found on the [wiki](https://github.com/elalish/manifold/wiki/Manifold-Library).
 
@@ -125,7 +125,7 @@ use the extension, please add `$BUILD_DIR/bindings/python` to your `PYTHONPATH`,
 can be found in `bindings/python/examples`. To see exported samples, run:
 ```
 sudo apt install pkg-config libpython3-dev python3 python3-distutils python3-pip
-pip install trimesh
+pip install trimesh pytest
 python3 run_all.py -e
 ```
 
@@ -139,9 +139,28 @@ python binding documentation:
 
 For more detailed documentation, please refer to the C++ API.
 
+### Windows Shenanigans
+
+Windows users should build with `-DBUILD_SHARED_LIBS=OFF`, as enabling shared
+libraries in general makes things very complicated.
+
+The DLL file for manifoldc (C FFI bindings) when built with msvc is in `${CMAKE_BINARY_DIR}/bin/${BUILD_TYPE}/manifoldc.dll`.
+For example, for the following command, the path relative to the project root directory is `build/bin/Release/manifoldc.dll`.
+```sh
+cmake . -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DMANIFOLD_DEBUG=ON -DMANIFOLD_PAR=${{matrix.parallel_backend}} -A x64 -B build
+```
+
 ## Contributing
 
 Contributions are welcome! A lower barrier contribution is to simply make a PR that adds a test, especially if it repros an issue you've found. Simply name it prepended with DISABLED_, so that it passes the CI. That will be a very strong signal to me to fix your issue. However, if you know how to fix it yourself, then including the fix in your PR would be much appreciated!
+
+### Formatting
+
+There is a formatting script `format.sh` that automatically formats everything.
+It requires clang-format 11 and black formatter for python.
+
+If you have clang-format installed but without clang-11, you can specify the
+clang-format executable by setting the `CLANG_FORMAT` environment variable.
 
 ### Profiling
 

@@ -3,14 +3,24 @@
 #include <cassert>
 #include <cstddef>
 
-#define GLM_VERSION_MAJOR 0
-#define GLM_VERSION_MINOR 9
-#define GLM_VERSION_PATCH 9
-#define GLM_VERSION_REVISION 9
-#define GLM_VERSION 999
-#define GLM_VERSION_MESSAGE "GLM: version 0.9.9.9"
+#define GLM_VERSION_MAJOR 1
+#define GLM_VERSION_MINOR 0
+#define GLM_VERSION_PATCH 0
+#define GLM_VERSION_REVISION 0 // Deprecated
+#define GLM_VERSION 1000 // Deprecated
+#define GLM_VERSION_MESSAGE "GLM: version 1.0.0"
+
+#define GLM_MAKE_API_VERSION(variant, major, minor, patch) \
+    ((((uint32_t)(variant)) << 29U) | (((uint32_t)(major)) << 22U) | (((uint32_t)(minor)) << 12U) | ((uint32_t)(patch)))
+
+#define GLM_VERSION_COMPLETE GLM_MAKE_API_VERSION(0, GLM_VERSION_MAJOR, GLM_VERSION_MINOR, GLM_VERSION_PATCH)
 
 #define GLM_SETUP_INCLUDED GLM_VERSION
+
+#define GLM_GET_VERSION_VARIANT(version) ((uint32_t)(version) >> 29U)
+#define GLM_GET_VERSION_MAJOR(version) (((uint32_t)(version) >> 22U) & 0x7FU)
+#define GLM_GET_VERSION_MINOR(version) (((uint32_t)(version) >> 12U) & 0x3FFU)
+#define GLM_GET_VERSION_PATCH(version) ((uint32_t)(version) & 0xFFFU)
 
 ///////////////////////////////////////////////////////////////////////////////////
 // Active states
@@ -329,6 +339,13 @@
 #	define GLM_IF_CONSTEXPR if
 #endif
 
+// [nodiscard]
+#if GLM_LANG & GLM_LANG_CXX17_FLAG
+#	define GLM_NODISCARD [[nodiscard]]
+#else
+#	define GLM_NODISCARD
+#endif
+
 //
 #if GLM_LANG & GLM_LANG_CXX11_FLAG
 #	define GLM_HAS_ASSIGNABLE 1
@@ -476,7 +493,9 @@
 #	define GLM_NEVER_INLINE
 #endif//defined(GLM_FORCE_INLINE)
 
-#define GLM_FUNC_DECL GLM_CUDA_FUNC_DECL
+#define GLM_CTOR_DECL GLM_CUDA_FUNC_DECL GLM_CONSTEXPR
+#define GLM_FUNC_DISCARD_DECL GLM_CUDA_FUNC_DECL
+#define GLM_FUNC_DECL GLM_NODISCARD GLM_CUDA_FUNC_DECL
 #define GLM_FUNC_QUALIFIER GLM_CUDA_FUNC_DEF GLM_INLINE
 
 // Do not use CUDA function qualifiers on CUDA compiler when functions are made default
@@ -484,14 +503,14 @@
 #	define GLM_DEFAULTED_FUNC_DECL
 #	define GLM_DEFAULTED_FUNC_QUALIFIER GLM_INLINE
 #else
-#	define GLM_DEFAULTED_FUNC_DECL GLM_FUNC_DECL
+#	define GLM_DEFAULTED_FUNC_DECL GLM_FUNC_DISCARD_DECL
 #	define GLM_DEFAULTED_FUNC_QUALIFIER GLM_FUNC_QUALIFIER
 #endif//GLM_HAS_DEFAULTED_FUNCTIONS
 #if !defined(GLM_FORCE_CTOR_INIT)
-#	define GLM_DEFAULTED_DEFAULT_CTOR_DECL GLM_DEFAULTED_FUNC_DECL
+#	define GLM_DEFAULTED_DEFAULT_CTOR_DECL GLM_CUDA_FUNC_DECL
 #	define GLM_DEFAULTED_DEFAULT_CTOR_QUALIFIER GLM_DEFAULTED_FUNC_QUALIFIER
 #else
-#	define GLM_DEFAULTED_DEFAULT_CTOR_DECL GLM_FUNC_DECL
+#	define GLM_DEFAULTED_DEFAULT_CTOR_DECL GLM_FUNC_DISCARD_DECL
 #	define GLM_DEFAULTED_DEFAULT_CTOR_QUALIFIER GLM_FUNC_QUALIFIER
 #endif//GLM_FORCE_CTOR_INIT
 
@@ -604,8 +623,10 @@
 
 #ifdef GLM_FORCE_SIZE_T_LENGTH
 #	define GLM_CONFIG_LENGTH_TYPE		GLM_LENGTH_SIZE_T
+#	define GLM_ASSERT_LENGTH(l, max) (assert ((l) < (max)))
 #else
 #	define GLM_CONFIG_LENGTH_TYPE		GLM_LENGTH_INT
+#	define GLM_ASSERT_LENGTH(l, max) (assert ((l) >= 0 && (l) < (max)))
 #endif
 
 namespace glm
@@ -877,10 +898,10 @@ namespace detail
 ///////////////////////////////////////////////////////////////////////////////////
 // Silent warnings
 
-#ifdef GLM_FORCE_SILENT_WARNINGS
-#	define GLM_SILENT_WARNINGS GLM_ENABLE
-#else
+#ifdef GLM_FORCE_WARNINGS
 #	define GLM_SILENT_WARNINGS GLM_DISABLE
+#else
+#	define GLM_SILENT_WARNINGS GLM_ENABLE
 #endif
 
 ///////////////////////////////////////////////////////////////////////////////////

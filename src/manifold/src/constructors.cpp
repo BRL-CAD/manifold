@@ -88,7 +88,7 @@ Manifold Manifold::Smooth(const MeshGL& meshGL,
   std::vector<float> propertyTolerance(meshGL.numProp - 3, -1);
   std::shared_ptr<Impl> impl =
       std::make_shared<Impl>(meshGL, propertyTolerance);
-  impl->CreateTangents(sharpenedEdges);
+  impl->CreateTangents(impl->UpdateSharpenedEdges(sharpenedEdges));
   return Manifold(impl);
 }
 
@@ -128,7 +128,7 @@ Manifold Manifold::Smooth(const Mesh& mesh,
 
   Impl::MeshRelationD relation = {(int)ReserveIDs(1)};
   std::shared_ptr<Impl> impl = std::make_shared<Impl>(mesh, relation);
-  impl->CreateTangents(sharpenedEdges);
+  impl->CreateTangents(impl->UpdateSharpenedEdges(sharpenedEdges));
   return Manifold(impl);
 }
 
@@ -509,7 +509,6 @@ std::vector<Manifold> Manifold::Decompose() const {
 
     impl->GatherFaces(*pImpl_, faceNew2Old);
     impl->ReindexVerts(vertNew2Old, pImpl_->NumVert());
-
     impl->Finish();
 
     meshes.push_back(Manifold(impl));

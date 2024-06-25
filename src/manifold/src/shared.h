@@ -40,16 +40,6 @@ inline int NextHalfedge(int current) {
   return current;
 }
 
-inline glm::vec3 UVW(int vert, const glm::vec3* barycentric) {
-  glm::vec3 uvw(0.0f);
-  if (vert < 0) {
-    uvw[vert + 3] = 1;
-  } else {
-    uvw = barycentric[vert];
-  }
-  return uvw;
-}
-
 inline glm::mat3 NormalTransform(const glm::mat4x3& transform) {
   return glm::inverse(glm::transpose(glm::mat3(transform)));
 }
@@ -143,7 +133,7 @@ struct Halfedge {
 
 struct Barycentric {
   int tri;
-  glm::vec3 uvw;
+  glm::vec4 uvw;
 };
 
 struct TriRef {
@@ -157,6 +147,10 @@ struct TriRef {
   /// The triangle index of the original triangle this was part of:
   /// Mesh.triVerts[tri].
   int tri;
+
+  bool SameFace(const TriRef& other) const {
+    return meshID == other.meshID && tri == other.tri;
+  }
 };
 
 /**

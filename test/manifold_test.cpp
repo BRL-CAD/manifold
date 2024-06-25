@@ -17,11 +17,10 @@
 #include <algorithm>
 
 #include "cross_section.h"
+#include "samples.h"
+#include "sdf.h"
 #include "test.h"
-
-#ifdef MANIFOLD_EXPORT
-#include "meshIO.h"
-#endif
+#include "tri_dist.h"
 
 namespace {
 
@@ -162,6 +161,29 @@ TEST(Manifold, Decompose) {
   RelatedGL(manifolds, input);
 }
 
+TEST(Manifold, DecomposeProps) {
+  std::vector<MeshGL> input;
+  std::vector<Manifold> manifoldList;
+  auto tet = WithPositionColors(Manifold::Tetrahedron());
+  manifoldList.emplace_back(tet);
+  input.emplace_back(tet);
+  auto cube = WithPositionColors(Manifold::Cube());
+  manifoldList.emplace_back(cube);
+  input.emplace_back(cube);
+  auto sphere = WithPositionColors(Manifold::Sphere(1, 4));
+  manifoldList.emplace_back(sphere);
+  input.emplace_back(sphere);
+  Manifold manifolds = Manifold::Compose(manifoldList);
+
+  ExpectMeshes(manifolds, {{8, 12, 3}, {6, 8, 3}, {4, 4, 3}});
+
+  RelatedGL(manifolds, input);
+
+  for (const Manifold& manifold : manifolds.Decompose()) {
+    RelatedGL(manifold, input);
+  }
+}
+
 /**
  * These tests check the various manifold constructors.
  */
@@ -169,6 +191,12 @@ TEST(Manifold, Sphere) {
   int n = 25;
   Manifold sphere = Manifold::Sphere(1.0f, 4 * n);
   EXPECT_EQ(sphere.NumTri(), n * n * 8);
+}
+
+TEST(Manifold, Cylinder) {
+  int n = 10000;
+  Manifold cylinder = Manifold::Cylinder(2, 2, 2, n);
+  EXPECT_EQ(cylinder.NumTri(), 4 * n - 4);
 }
 
 TEST(Manifold, Normals) {
@@ -328,216 +356,51 @@ TEST(Manifold, WarpBatch) {
   EXPECT_EQ(prop1.surfaceArea, prop2.surfaceArea);
 }
 
-TEST(Manifold, Smooth) {
-  Manifold tet = Manifold::Tetrahedron();
-  Manifold smooth = Manifold::Smooth(tet.GetMesh());
-  int n = 100;
-  smooth = smooth.Refine(n);
-  ExpectMeshes(smooth, {{2 * n * n + 2, 4 * n * n}});
-  auto prop = smooth.GetProperties();
-  EXPECT_NEAR(prop.volume, 17.38, 0.1);
-  EXPECT_NEAR(prop.surfaceArea, 33.38, 0.1);
-
-#ifdef MANIFOLD_EXPORT
-  if (options.exportModels) ExportMesh("smoothTet.glb", smooth.GetMesh(), {});
-#endif
-}
-
-TEST(Manifold, Smooth2Length) {
-  Manifold cone = Manifold::Extrude(
-      CrossSection::Circle(10, 10).Translate({10, 0}), 2, 0, 0, {0, 0});
-  cone += cone.Scale({1, 1, -5});
-  Manifold smooth = Manifold::Smooth(cone.GetMesh());
-  smooth = smooth.RefineToLength(0.1);
-  ExpectMeshes(smooth, {{85250, 170496}});
-  auto prop = smooth.GetProperties();
-  EXPECT_NEAR(prop.volume, 4688, 1);
-  EXPECT_NEAR(prop.surfaceArea, 1369, 1);
-
-#ifdef MANIFOLD_EXPORT
-  if (options.exportModels) ExportMesh("smoothCones.glb", smooth.GetMesh(), {});
-#endif
-}
-
-TEST(Manifold, SmoothSphere) {
-  int n[5] = {4, 8, 16, 32, 64};
-  float precision[5] = {0.04, 0.003, 0.003, 0.0005, 0.00006};
-  for (int i = 0; i < 5; ++i) {
-    Manifold sphere = Manifold::Sphere(1, n[i]);
-    // Refine(odd) puts a center point in the triangle, which is the worst case.
-    Manifold smoothed = Manifold::Smooth(sphere.GetMesh()).Refine(6);
-    Mesh out = smoothed.GetMesh();
-    auto bounds =
-        std::minmax_element(out.vertPos.begin(), out.vertPos.end(),
-                            [](const glm::vec3& a, const glm::vec3& b) {
-                              return glm::dot(a, a) < glm::dot(b, b);
-                            });
-    float min = glm::length(*bounds.first);
-    float max = glm::length(*bounds.second);
-    EXPECT_NEAR(min, 1, precision[i]);
-    EXPECT_NEAR(max, 1, precision[i]);
-  }
-}
-
-TEST(Manifold, ManualSmooth) {
-  // Unit Octahedron
-  const Mesh oct = Manifold::Sphere(1, 4).GetMesh();
-  Mesh smooth = Manifold::Smooth(oct).GetMesh();
-  // Sharpen the edge from vert 4 to 5
-  smooth.halfedgeTangent[6] = {0, 0, 0, 1};
-  smooth.halfedgeTangent[22] = {0, 0, 0, 1};
-  smooth.halfedgeTangent[16] = {0, 0, 0, 1};
-  smooth.halfedgeTangent[18] = {0, 0, 0, 1};
-  Manifold interp(smooth);
-  interp = interp.Refine(100);
-
-  ExpectMeshes(interp, {{40002, 80000}});
-  auto prop = interp.GetProperties();
-  EXPECT_NEAR(prop.volume, 3.53, 0.01);
-  EXPECT_NEAR(prop.surfaceArea, 11.39, 0.01);
-
-#ifdef MANIFOLD_EXPORT
-  if (options.exportModels) {
-    const Mesh out = interp.GetMesh();
-    ExportOptions options;
-    options.faceted = false;
-    options.mat.roughness = 0.1;
-
-    options.mat.vertColor.resize(interp.NumVert());
-    const glm::vec4 red(1, 0, 0, 1);
-    const glm::vec4 purple(1, 0, 1, 1);
-    for (int tri = 0; tri < interp.NumTri(); ++tri) {
-      for (int i : {0, 1, 2}) {
-        const glm::vec3& uvw = {0.5, 0.5, 0.0};
-        const float alpha = glm::min(uvw[0], glm::min(uvw[1], uvw[2]));
-        options.mat.vertColor[out.triVerts[tri][i]] =
-            glm::mix(purple, red, glm::smoothstep(0.0f, 0.2f, alpha));
-      }
-    }
-    ExportMesh("sharpenedSphere.glb", out, options);
-  }
-#endif
-}
-
-TEST(Manifold, SmoothMirrored) {
-  const Mesh tet = Manifold::Tetrahedron().GetMesh();
-  Manifold smooth = Manifold::Smooth(tet);
-  Manifold mirror = smooth.Scale({-1, 1, 2}).Refine(10);
-  smooth = smooth.Refine(10).Scale({1, 1, 2});
-
-  auto prop0 = smooth.GetProperties();
-  auto prop1 = mirror.GetProperties();
-  EXPECT_NEAR(prop0.volume, prop1.volume, 0.1);
-  EXPECT_NEAR(prop0.surfaceArea, prop1.surfaceArea, 0.1);
-}
-
-TEST(Manifold, Csaszar) {
-  Manifold csaszar = Manifold::Smooth(Csaszar());
-  csaszar = csaszar.Refine(100);
-  ExpectMeshes(csaszar, {{70000, 140000}});
-  auto prop = csaszar.GetProperties();
-  EXPECT_NEAR(prop.volume, 84699, 10);
-  EXPECT_NEAR(prop.surfaceArea, 14796, 10);
-
-#ifdef MANIFOLD_EXPORT
-  if (options.exportModels) {
-    const Mesh out = csaszar.GetMesh();
-    ExportOptions options;
-    options.faceted = false;
-    options.mat.roughness = 0.1;
-
-    options.mat.vertColor.resize(csaszar.NumVert());
-    const glm::vec4 blue(0, 0, 1, 1);
-    const glm::vec4 yellow(1, 1, 0, 1);
-    for (int tri = 0; tri < csaszar.NumTri(); ++tri) {
-      for (int i : {0, 1, 2}) {
-        const glm::vec3& uvw = {0.5, 0.5, 0.0};
-        const float alpha = glm::min(uvw[0], glm::min(uvw[1], uvw[2]));
-        options.mat.vertColor[out.triVerts[tri][i]] =
-            glm::mix(yellow, blue, glm::smoothstep(0.0f, 0.2f, alpha));
-      }
-    }
-    ExportMesh("smoothCsaszar.glb", out, options);
-  }
-#endif
-}
-
-/**
- * These tests verify the calculation of a manifold's geometric properties.
- */
-TEST(Manifold, GetProperties) {
-  Manifold cube = Manifold::Cube();
-  auto prop = cube.GetProperties();
-  EXPECT_FLOAT_EQ(prop.volume, 1.0f);
-  EXPECT_FLOAT_EQ(prop.surfaceArea, 6.0f);
-
-  cube = cube.Scale(glm::vec3(-1.0f));
-  prop = cube.GetProperties();
-  EXPECT_FLOAT_EQ(prop.volume, 1.0f);
-  EXPECT_FLOAT_EQ(prop.surfaceArea, 6.0f);
-}
-
-TEST(Manifold, Precision) {
-  Manifold cube = Manifold::Cube();
-  EXPECT_FLOAT_EQ(cube.Precision(), kTolerance);
-  cube = cube.Scale({0.1, 1, 10});
-  EXPECT_FLOAT_EQ(cube.Precision(), 10 * kTolerance);
-  cube = cube.Translate({-100, -10, -1});
-  EXPECT_FLOAT_EQ(cube.Precision(), 100 * kTolerance);
-}
-
-TEST(Manifold, Precision2) {
-  Manifold cube = Manifold::Cube();
-  cube = cube.Translate({-0.5, 0, 0}).Scale({2, 1, 1});
-  EXPECT_FLOAT_EQ(cube.Precision(), 2 * kTolerance);
-}
-
-TEST(Manifold, Precision3) {
-  Manifold cylinder = Manifold::Cylinder(1, 1, 1, 1000);
-  const auto prop = cylinder.GetProperties();
-
-  MeshGL mesh = cylinder.GetMeshGL();
-  mesh.precision = 0.001;
-  mesh.faceID.clear();
-  Manifold cylinder2(mesh);
-
-  const auto prop2 = cylinder2.GetProperties();
-  EXPECT_NEAR(prop.volume, prop2.volume, 0.001);
-  EXPECT_NEAR(prop.surfaceArea, prop2.surfaceArea, 0.001);
-}
-
-/**
- * Curvature is the inverse of the radius of curvature, and signed such that
- * positive is convex and negative is concave. There are two orthogonal
- * principal curvatures at any point on a manifold, with one maximum and the
- * other minimum. Gaussian curvature is their product, while mean
- * curvature is their sum. Here we check our discrete approximations calculated
- * at each vertex against the constant expected values of spheres of different
- * radii and at different mesh resolutions.
- */
-TEST(Manifold, CalculateCurvature) {
-  const float precision = 0.015;
-  for (int n = 4; n < 100; n *= 2) {
-    const int gaussianIdx = 3;
-    const int meanIdx = 4;
-    Manifold sphere = Manifold::Sphere(1, 64).CalculateCurvature(
-        gaussianIdx - 3, meanIdx - 3);
-    MeshGL sphereGL = sphere.GetMeshGL();
-    ASSERT_EQ(sphereGL.numProp, 5);
-    EXPECT_NEAR(GetMinProperty(sphereGL, meanIdx), 2, 2 * precision);
-    EXPECT_NEAR(GetMaxProperty(sphereGL, meanIdx), 2, 2 * precision);
-    EXPECT_NEAR(GetMinProperty(sphereGL, gaussianIdx), 1, precision);
-    EXPECT_NEAR(GetMaxProperty(sphereGL, gaussianIdx), 1, precision);
-
-    sphere = sphere.Scale(glm::vec3(2.0f))
-                 .CalculateCurvature(gaussianIdx - 3, meanIdx - 3);
-    sphereGL = sphere.GetMeshGL();
-    ASSERT_EQ(sphereGL.numProp, 5);
-    EXPECT_NEAR(GetMinProperty(sphereGL, meanIdx), 1, precision);
-    EXPECT_NEAR(GetMaxProperty(sphereGL, meanIdx), 1, precision);
-    EXPECT_NEAR(GetMinProperty(sphereGL, gaussianIdx), 0.25, 0.25 * precision);
-    EXPECT_NEAR(GetMaxProperty(sphereGL, gaussianIdx), 0.25, 0.25 * precision);
-  }
+TEST(Manifold, Project) {
+  Mesh input;
+  input.vertPos = {{0, 0, 0},
+                   {-2, -0.7, -0.1},
+                   {-2, -0.7, 0},
+                   {-1.9, -0.7, -0.1},
+                   {-1.9, -0.6901, -0.1},
+                   {-1.9, -0.7, 0},
+                   {-1.9, -0.6901, 0},
+                   {-2, -1, 3},
+                   {-1.9, -1, 3},
+                   {-2, -1, 4},
+                   {-1.9, -1, 4},
+                   {-1.9, -0.6901, 3},
+                   {-1.9, -0.6901, 4},
+                   {-1.7, -0.6901, 3},
+                   {-1.7, -0.6901, 3.2},
+                   {-2, 0, -0.1},
+                   {-2, 0, 0},
+                   {-2, 0, 3},
+                   {-2, 0, 4},
+                   {-1.7, 0, 3},
+                   {-1.7, 0, 3.2},
+                   {-1, -0.6901, -0.1},
+                   {-1, -0.6901, 0},
+                   {-1, -0.6901, 3.2},
+                   {-1, -0.6901, 4},
+                   {-1, 0, -0.1},
+                   {-1, 0, 0},
+                   {-1, 0, 3.2},
+                   {-1, 0, 4}};
+  input.triVerts = {
+      {1, 3, 2},    {1, 4, 3},    {2, 3, 5},    {5, 6, 2},    {3, 4, 6},
+      {5, 3, 6},    {6, 4, 21},   {26, 22, 25}, {21, 25, 22}, {25, 15, 26},
+      {26, 6, 22},  {21, 4, 25},  {21, 22, 6},  {16, 26, 15}, {16, 6, 26},
+      {4, 15, 25},  {15, 1, 16},  {16, 2, 6},   {4, 1, 15},   {1, 2, 16},
+      {12, 14, 23}, {12, 13, 14}, {12, 11, 13}, {18, 9, 12},  {11, 7, 17},
+      {7, 9, 18},   {17, 7, 18},  {13, 11, 19}, {17, 18, 20}, {19, 11, 17},
+      {19, 17, 20}, {14, 13, 20}, {18, 12, 24}, {20, 13, 19}, {20, 18, 27},
+      {12, 10, 11}, {24, 12, 23}, {9, 10, 12},  {9, 8, 10},   {8, 11, 10},
+      {8, 7, 11},   {8, 9, 7},    {14, 20, 27}, {24, 28, 18}, {27, 18, 28},
+      {23, 14, 27}, {24, 23, 28}, {28, 23, 27}};
+  Manifold in(input);
+  CrossSection projected = in.Project();
+  EXPECT_NEAR(projected.Area(), 0.72, 0.01);
 }
 
 /**
@@ -665,6 +528,36 @@ TEST(Manifold, Merge) {
   CheckCube(cubeSTL);
 }
 
+TEST(Manifold, PinchedVert) {
+  Mesh shape;
+  shape.vertPos = {{0, 0, 0},         //
+                   {1, 1, 0},         //
+                   {1, -1, 0},        //
+                   {-0.00001, 0, 0},  //
+                   {-1, -1, -0},      //
+                   {-1, 1, 0},        //
+                   {0, 0, 2},         //
+                   {0, 0, -2}};
+  shape.triVerts = {{0, 2, 6},  //
+                    {2, 1, 6},  //
+                    {1, 0, 6},  //
+                    {4, 3, 6},  //
+                    {3, 5, 6},  //
+                    {5, 4, 6},  //
+                    {2, 0, 4},  //
+                    {0, 3, 4},  //
+                    {3, 0, 1},  //
+                    {3, 1, 5},  //
+                    {7, 2, 4},  //
+                    {7, 4, 5},  //
+                    {7, 5, 1},  //
+                    {7, 1, 2}};
+  Manifold touch(shape);
+  EXPECT_FALSE(touch.IsEmpty());
+  EXPECT_EQ(touch.Status(), Manifold::Error::NoError);
+  EXPECT_EQ(touch.Genus(), 0);
+}
+
 TEST(Manifold, FaceIDRoundTrip) {
   const Manifold cube = Manifold::Cube();
   ASSERT_GE(cube.OriginalID(), 0);
@@ -741,79 +634,4 @@ TEST(Manifold, MergeDegenerates) {
   Manifold squashed = Manifold(squash);
   EXPECT_FALSE(squashed.IsEmpty());
   EXPECT_EQ(squashed.Status(), Manifold::Error::NoError);
-}
-
-TEST(Manifold, PinchedVert) {
-  Mesh shape;
-  shape.vertPos = {{0, 0, 0},         //
-                   {1, 1, 0},         //
-                   {1, -1, 0},        //
-                   {-0.00001, 0, 0},  //
-                   {-1, -1, -0},      //
-                   {-1, 1, 0},        //
-                   {0, 0, 2},         //
-                   {0, 0, -2}};
-  shape.triVerts = {{0, 2, 6},  //
-                    {2, 1, 6},  //
-                    {1, 0, 6},  //
-                    {4, 3, 6},  //
-                    {3, 5, 6},  //
-                    {5, 4, 6},  //
-                    {2, 0, 4},  //
-                    {0, 3, 4},  //
-                    {3, 0, 1},  //
-                    {3, 1, 5},  //
-                    {7, 2, 4},  //
-                    {7, 4, 5},  //
-                    {7, 5, 1},  //
-                    {7, 1, 2}};
-  Manifold touch(shape);
-  EXPECT_FALSE(touch.IsEmpty());
-  EXPECT_EQ(touch.Status(), Manifold::Error::NoError);
-  EXPECT_EQ(touch.Genus(), 0);
-}
-
-TEST(Manifold, TictacHull) {
-  const float tictacRad = 100;
-  const float tictacHeight = 500;
-  const int tictacSeg = 1000;
-  const float tictacMid = tictacHeight - 2 * tictacRad;
-  const auto sphere = Manifold::Sphere(tictacRad, tictacSeg);
-  const std::vector<Manifold> spheres{sphere,
-                                      sphere.Translate({0, 0, tictacMid})};
-  const auto tictac = Manifold::Hull(spheres);
-
-#ifdef MANIFOLD_EXPORT
-  if (options.exportModels) {
-    ExportMesh("tictac_hull.glb", tictac.GetMesh(), {});
-  }
-#endif
-
-  EXPECT_EQ(sphere.NumVert() + tictacSeg, tictac.NumVert());
-}
-
-TEST(Manifold, HollowHull) {
-  auto sphere = Manifold::Sphere(100, 360);
-  auto hollow = sphere - sphere.Scale({0.8, 0.8, 0.8});
-  const float sphere_vol = sphere.GetProperties().volume;
-  EXPECT_FLOAT_EQ(hollow.Hull().GetProperties().volume, sphere_vol);
-}
-
-TEST(Manifold, CubeHull) {
-  std::vector<glm::vec3> cubePts = {
-      {0, 0, 0},       {1, 0, 0},   {0, 1, 0},      {0, 0, 1},  // corners
-      {1, 1, 0},       {0, 1, 1},   {1, 0, 1},      {1, 1, 1},  // corners
-      {0.5, 0.5, 0.5}, {0.5, 0, 0}, {0.5, 0.7, 0.2}  // internal points
-  };
-  auto cube = Manifold::Hull(cubePts);
-  EXPECT_FLOAT_EQ(cube.GetProperties().volume, 1);
-}
-
-TEST(Manifold, EmptyHull) {
-  const std::vector<glm::vec3> tooFew{{0, 0, 0}, {1, 0, 0}, {0, 1, 0}};
-  EXPECT_TRUE(Manifold::Hull(tooFew).IsEmpty());
-
-  const std::vector<glm::vec3> coplanar{
-      {0, 0, 0}, {1, 0, 0}, {0, 1, 0}, {1, 1, 0}};
-  EXPECT_TRUE(Manifold::Hull(coplanar).IsEmpty());
 }

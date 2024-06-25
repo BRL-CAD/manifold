@@ -35,18 +35,10 @@
 using namespace manifold;
 
 namespace {
-ManifoldMeshGL *level_set(void *mem, float (*sdf)(float, float, float),
+ManifoldMeshGL *level_set(void *mem,
+                          float (*sdf_context)(float, float, float, void *),
                           ManifoldBox *bounds, float edge_length, float level,
-                          bool seq) {
-  std::function<float(glm::vec3)> fun = [sdf](glm::vec3 v) {
-    return (sdf(v.x, v.y, v.z));
-  };
-  auto mesh = LevelSet(fun, *from_c(bounds), edge_length, level, !seq);
-  return to_c(new (mem) MeshGL(mesh));
-}
-ManifoldMeshGL *level_set_context(
-    void *mem, float (*sdf_context)(float, float, float, void *),
-    ManifoldBox *bounds, float edge_length, float level, bool seq, void *ctx) {
+                          bool seq, void *ctx) {
   // Bind function with context argument to one without
   using namespace std::placeholders;
   std::function<float(float, float, float)> sdf =
@@ -267,37 +259,44 @@ ManifoldManifold *manifold_mirror(void *mem, ManifoldManifold *m, float nx,
 }
 
 ManifoldManifold *manifold_warp(void *mem, ManifoldManifold *m,
-                                ManifoldVec3 (*fun)(float, float, float)) {
-  std::function<void(glm::vec3 & v)> warp = [fun](glm::vec3 &v) {
-    v = from_c(fun(v.x, v.y, v.z));
+                                ManifoldVec3 (*fun)(float, float, float,
+                                                    void *),
+                                void *ctx) {
+  // Bind function with context argument to one without
+  using namespace std::placeholders;
+  std::function<ManifoldVec3(float, float, float)> f3 =
+      std::bind(fun, _1, _2, _3, ctx);
+  std::function<void(glm::vec3 & v)> warp = [f3](glm::vec3 &v) {
+    v = from_c(f3(v.x, v.y, v.z));
   };
   auto warped = from_c(m)->Warp(warp);
   return to_c(new (mem) Manifold(warped));
 }
 
-ManifoldMeshGL *manifold_level_set(void *mem, float (*sdf)(float, float, float),
+ManifoldMeshGL *manifold_level_set(void *mem,
+                                   float (*sdf)(float, float, float, void *),
                                    ManifoldBox *bounds, float edge_length,
-                                   float level) {
-  return level_set(mem, sdf, bounds, edge_length, level, false);
+                                   float level, void *ctx) {
+  return level_set(mem, sdf, bounds, edge_length, level, false, ctx);
 }
 
-ManifoldMeshGL *manifold_level_set_seq(void *mem,
-                                       float (*sdf)(float, float, float),
-                                       ManifoldBox *bounds, float edge_length,
-                                       float level) {
-  return level_set(mem, sdf, bounds, edge_length, level, true);
-}
-
-ManifoldMeshGL *manifold_level_set_context(
+ManifoldMeshGL *manifold_level_set_seq(
     void *mem, float (*sdf)(float, float, float, void *), ManifoldBox *bounds,
     float edge_length, float level, void *ctx) {
-  return level_set_context(mem, sdf, bounds, edge_length, level, false, ctx);
+  return level_set(mem, sdf, bounds, edge_length, level, true, ctx);
 }
 
-ManifoldMeshGL *manifold_level_set_seq_context(
-    void *mem, float (*sdf)(float, float, float, void *), ManifoldBox *bounds,
-    float edge_length, float level, void *ctx) {
-  return level_set_context(mem, sdf, bounds, edge_length, level, true, ctx);
+ManifoldManifold *manifold_smooth_by_normals(void *mem, ManifoldManifold *m,
+                                             int normalIdx) {
+  auto smoothed = from_c(m)->SmoothByNormals(normalIdx);
+  return to_c(new (mem) Manifold(smoothed));
+}
+
+ManifoldManifold *manifold_smooth_out(void *mem, ManifoldManifold *m,
+                                      float minSharpAngle,
+                                      float minSmoothness) {
+  auto smoothed = from_c(m)->SmoothOut(minSharpAngle, minSmoothness);
+  return to_c(new (mem) Manifold(smoothed));
 }
 
 ManifoldManifold *manifold_refine(void *mem, ManifoldManifold *m, int refine) {
@@ -418,6 +417,15 @@ ManifoldMeshGL *manifold_meshgl_copy(void *mem, ManifoldMeshGL *m) {
   return to_c(new (mem) MeshGL(*from_c(m)));
 }
 
+ManifoldMeshGL *manifold_meshgl_merge(void *mem, ManifoldMeshGL *m) {
+  auto duplicate = new (mem) MeshGL(*from_c(m));
+  if (duplicate->Merge()) {
+    return to_c(duplicate);
+  }
+  delete duplicate;
+  return m;
+}
+
 int manifold_meshgl_num_prop(ManifoldMeshGL *m) { return from_c(m)->numProp; }
 int manifold_meshgl_num_vert(ManifoldMeshGL *m) { return from_c(m)->NumVert(); }
 int manifold_meshgl_num_tri(ManifoldMeshGL *m) { return from_c(m)->NumTri(); }
@@ -524,14 +532,18 @@ float manifold_precision(ManifoldManifold *m) { return from_c(m)->Precision(); }
 
 uint32_t manifold_reserve_ids(uint32_t n) { return Manifold::ReserveIDs(n); }
 
-ManifoldManifold *manifold_set_properties(void *mem, ManifoldManifold *m,
-                                          int num_prop,
-                                          void (*fun)(float *new_prop,
-                                                      ManifoldVec3 position,
-                                                      const float *old_prop)) {
+ManifoldManifold *manifold_set_properties(
+    void *mem, ManifoldManifold *m, int num_prop,
+    void (*fun)(float *new_prop, ManifoldVec3 position, const float *old_prop,
+                void *ctx),
+    void *ctx) {
+  // Bind function with context argument to one without
+  using namespace std::placeholders;
+  std::function<void(float *, ManifoldVec3, const float *)> f3 =
+      std::bind(fun, _1, _2, _3, ctx);
   std::function<void(float *, glm::vec3, const float *)> f =
-      [fun](float *new_prop, glm::vec3 v, const float *old_prop) {
-        fun(new_prop, to_c(v), old_prop);
+      [f3](float *new_prop, glm::vec3 v, const float *old_prop) {
+        return (f3(new_prop, to_c(v), old_prop));
       };
   auto man = from_c(m)->SetProperties(num_prop, f);
   return to_c(new (mem) Manifold(man));
@@ -540,6 +552,18 @@ ManifoldManifold *manifold_set_properties(void *mem, ManifoldManifold *m,
 ManifoldManifold *manifold_calculate_curvature(void *mem, ManifoldManifold *m,
                                                int gaussian_idx, int mean_idx) {
   auto man = from_c(m)->CalculateCurvature(gaussian_idx, mean_idx);
+  return to_c(new (mem) Manifold(man));
+}
+
+float manifold_min_gap(ManifoldManifold *m, ManifoldManifold *other,
+                       float searchLength) {
+  return from_c(m)->MinGap(*from_c(other), searchLength);
+}
+
+ManifoldManifold *manifold_calculate_normals(void *mem, ManifoldManifold *m,
+                                             int normal_idx,
+                                             int min_sharp_angle) {
+  auto man = from_c(m)->CalculateNormals(normal_idx, min_sharp_angle);
   return to_c(new (mem) Manifold(man));
 }
 

@@ -23,6 +23,7 @@
 #include "mesh_fixes.h"
 #include "par.h"
 #include "svd.h"
+#include "tri_dist.h"
 
 namespace {
 using namespace manifold;
@@ -374,7 +375,8 @@ Manifold::Impl::Impl(const MeshGL& meshGL,
   }
 
   if (!meshGL.runOriginalID.empty() && !meshGL.runIndex.empty() &&
-      meshGL.runOriginalID.size() + 1 != meshGL.runIndex.size()) {
+      meshGL.runOriginalID.size() + 1 != meshGL.runIndex.size() &&
+      meshGL.runOriginalID.size() != meshGL.runIndex.size()) {
     MarkFailure(Error::RunIndexWrongLength);
     return;
   }
@@ -442,8 +444,11 @@ Manifold::Impl::Impl(const MeshGL& meshGL,
     relation.originalID = Impl::ReserveIDs(1);
   } else {
     std::vector<uint32_t> runIndex = meshGL.runIndex;
+    const uint32_t runEnd = meshGL.triVerts.size();
     if (runIndex.empty()) {
-      runIndex = {0, 3 * meshGL.NumTri()};
+      runIndex = {0, runEnd};
+    } else if (runIndex.size() == meshGL.runOriginalID.size()) {
+      runIndex.push_back(runEnd);
     }
     relation.triRef.resize(meshGL.NumTri());
     const int startID = Impl::ReserveIDs(meshGL.runOriginalID.size());
@@ -902,4 +907,5 @@ SparseIndices Manifold::Impl::VertexCollisionsZ(
   else
     return collider_.Collisions<false, false>(vertsIn);
 }
+
 }  // namespace manifold

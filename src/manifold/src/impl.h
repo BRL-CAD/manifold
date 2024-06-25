@@ -42,6 +42,9 @@ struct Manifold::Impl {
     Vec<TriRef> triRef;
     Vec<glm::ivec3> triProperties;
   };
+  struct BaryIndices {
+    int tri, start4, end4;
+  };
 
   Box bBox_;
   float precision_ = -1;
@@ -65,6 +68,29 @@ struct Manifold::Impl {
   Impl(const Mesh&, const MeshRelationD& relation,
        const std::vector<float>& propertyTolerance = {},
        bool hasFaceIDs = false);
+
+  inline void ForVert(int halfedge, std::function<void(int halfedge)> func) {
+    int current = halfedge;
+    do {
+      current = NextHalfedge(halfedge_[current].pairedHalfedge);
+      func(current);
+    } while (current != halfedge);
+  }
+
+  template <typename T>
+  void ForVert(
+      int halfedge, std::function<T(int halfedge)> transform,
+      std::function<void(int halfedge, const T& here, T& next)> binaryOp) {
+    T here = transform(halfedge);
+    int current = halfedge;
+    do {
+      const int nextHalfedge = NextHalfedge(halfedge_[current].pairedHalfedge);
+      T next = transform(nextHalfedge);
+      binaryOp(current, here, next);
+      here = next;
+      current = nextHalfedge;
+    } while (current != halfedge);
+  }
 
   void CreateFaces(const std::vector<float>& propertyTolerance = {});
   void RemoveUnreferencedVerts(Vec<glm::ivec3>& triVerts);
@@ -103,6 +129,7 @@ struct Manifold::Impl {
   bool Is2Manifold() const;
   bool MatchesTriNormals() const;
   int NumDegenerateTris() const;
+  float MinGap(const Impl& other, float searchLength) const;
 
   // sort.cu
   void Finish();
@@ -136,9 +163,31 @@ struct Manifold::Impl {
   void CollapseTri(const glm::ivec3& triEdge);
   void SplitPinchedVerts();
 
-  // smoothing.cu
-  void CreateTangents(const std::vector<Smoothness>&);
+  // subdivision.cpp
+  int GetNeighbor(int tri) const;
+  glm::ivec4 GetHalfedges(int tri) const;
+  BaryIndices GetIndices(int halfedge) const;
+  void FillRetainedVerts(Vec<Barycentric>& vertBary) const;
   Vec<Barycentric> Subdivide(std::function<int(glm::vec3)>);
+
+  // smoothing.cpp
+  bool IsInsideQuad(int halfedge) const;
+  bool IsMarkedInsideQuad(int halfedge) const;
+  glm::vec3 GetNormal(int halfedge, int normalIdx) const;
+  glm::vec4 TangentFromNormal(const glm::vec3& normal, int halfedge) const;
+  std::vector<Smoothness> UpdateSharpenedEdges(
+      const std::vector<Smoothness>&) const;
+  Vec<bool> FlatFaces() const;
+  Vec<int> VertFlatFace(const Vec<bool>&) const;
+  Vec<int> VertHalfedge() const;
+  std::vector<Smoothness> SharpenEdges(float minSharpAngle,
+                                       float minSmoothness) const;
+  void SharpenTangent(int halfedge, float smoothness);
+  void SetNormals(int normalIdx, float minSharpAngle);
+  void LinearizeFlatTangents();
+  void DistributeTangents(const Vec<bool>& fixedHalfedges);
+  void CreateTangents(int normalIdx);
+  void CreateTangents(std::vector<Smoothness>);
   void Refine(std::function<int(glm::vec3)>);
 };
 }  // namespace manifold

@@ -138,12 +138,14 @@ EMSCRIPTEN_BINDINGS(whatever) {
       .function("_Split", &man_js::Split)
       .function("_SplitByPlane", &man_js::SplitByPlane)
       .function("_TrimByPlane", &Manifold::TrimByPlane)
-      .function("slice", &Manifold::Slice)
+      .function("_Slice", &Manifold::Slice)
       .function("project", &Manifold::Project)
       .function("hull", select_overload<Manifold() const>(&Manifold::Hull))
       .function("_GetMeshJS", &js::GetMeshJS)
       .function("refine", &Manifold::Refine)
       .function("refineToLength", &Manifold::RefineToLength)
+      .function("smoothByNormals", &Manifold::SmoothByNormals)
+      .function("_SmoothOut", &Manifold::SmoothOut)
       .function("_Warp", &man_js::Warp)
       .function("_SetProperties", &man_js::SetProperties)
       .function("transform", &man_js::Transform)
@@ -164,7 +166,9 @@ EMSCRIPTEN_BINDINGS(whatever) {
       .function("precision", &Manifold::Precision)
       .function("genus", &Manifold::Genus)
       .function("getProperties", &Manifold::GetProperties)
+      .function("minGap", &Manifold::MinGap)
       .function("calculateCurvature", &Manifold::CalculateCurvature)
+      .function("_CalculateNormals", &Manifold::CalculateNormals)
       .function("originalID", &Manifold::OriginalID)
       .function("asOriginal", &Manifold::AsOriginal);
 
@@ -194,4 +198,5 @@ EMSCRIPTEN_BINDINGS(whatever) {
   function("setMinCircularEdgeLength", &Quality::SetMinCircularEdgeLength);
   function("setCircularSegments", &Quality::SetCircularSegments);
   function("getCircularSegments", &Quality::GetCircularSegments);
+  function("resetToCircularDefaults", &Quality::ResetToDefaults);
 }

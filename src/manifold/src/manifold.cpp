@@ -21,6 +21,7 @@
 #include "csg_tree.h"
 #include "impl.h"
 #include "par.h"
+#include "tri_dist.h"
 
 namespace {
 using namespace manifold;
@@ -656,12 +657,90 @@ Manifold Manifold::CalculateCurvature(int gaussianIdx, int meanIdx) const {
 }
 
 /**
+ * Fills in vertex properties for normal vectors, calculated from the mesh
+ * geometry. Flat faces composed of three or more triangles will remain flat.
+ *
+ * @param normalIdx The property channel in which to store the X
+ * values of the normals. The X, Y, and Z channels will be sequential. The
+ * property set will be automatically expanded such that NumProp will be at
+ * least normalIdx + 3.
+ *
+ * @param minSharpAngle Any edges with angles greater than this value will
+ * remain sharp, getting different normal vector properties on each side of the
+ * edge. By default, no edges are sharp and all normals are shared. With a value
+ * of zero, the model is faceted and all normals match their triangle normals,
+ * but in this case it would be better not to calculate normals at all.
+ */
+Manifold Manifold::CalculateNormals(int normalIdx, float minSharpAngle) const {
+  auto pImpl = std::make_shared<Impl>(*GetCsgLeafNode().GetImpl());
+  pImpl->SetNormals(normalIdx, minSharpAngle);
+  return Manifold(std::make_shared<CsgLeafNode>(pImpl));
+}
+
+/**
+ * Smooths out the Manifold by filling in the halfedgeTangent vectors. The
+ * geometry will remain unchanged until Refine or RefineToLength is called to
+ * interpolate the surface. This version uses the supplied vertex normal
+ * properties to define the tangent vectors. Faces of two coplanar triangles
+ * will be marked as quads, while faces with three or more will be flat.
+ *
+ * @param normalIdx The first property channel of the normals. NumProp must be
+ * at least normalIdx + 3. Any vertex where multiple normals exist and don't
+ * agree will result in a sharp edge.
+ */
+Manifold Manifold::SmoothByNormals(int normalIdx) const {
+  auto pImpl = std::make_shared<Impl>(*GetCsgLeafNode().GetImpl());
+  if (!IsEmpty()) {
+    pImpl->CreateTangents(normalIdx);
+  }
+  return Manifold(std::make_shared<CsgLeafNode>(pImpl));
+}
+
+/**
+ * Smooths out the Manifold by filling in the halfedgeTangent vectors. The
+ * geometry will remain unchanged until Refine or RefineToLength is called to
+ * interpolate the surface. This version uses the geometry of the triangles and
+ * pseudo-normals to define the tangent vectors. Faces of two coplanar triangles
+ * will be marked as quads.
+ *
+ * @param minSharpAngle degrees, default 60. Any edges with angles greater than
+ * this value will remain sharp. The rest will be smoothed to G1 continuity,
+ * with the caveat that flat faces of three or more triangles will always remain
+ * flat. With a value of zero, the model is faceted, but in this case there is
+ * no point in smoothing.
+ *
+ * @param minSmoothness range: 0 - 1, default 0. The smoothness applied to sharp
+ * angles. The default gives a hard edge, while values > 0 will give a small
+ * fillet on these sharp edges. A value of 1 is equivalent to a minSharpAngle of
+ * 180 - all edges will be smooth.
+ */
+Manifold Manifold::SmoothOut(float minSharpAngle, float minSmoothness) const {
+  auto pImpl = std::make_shared<Impl>(*GetCsgLeafNode().GetImpl());
+  if (!IsEmpty()) {
+    if (minSmoothness == 0) {
+      const int numProp = pImpl->meshRelation_.numProp;
+      Vec<float> properties = pImpl->meshRelation_.properties;
+      Vec<glm::ivec3> triProperties = pImpl->meshRelation_.triProperties;
+      pImpl->SetNormals(0, minSharpAngle);
+      pImpl->CreateTangents(0);
+      pImpl->meshRelation_.numProp = numProp;
+      pImpl->meshRelation_.properties.swap(properties);
+      pImpl->meshRelation_.triProperties.swap(triProperties);
+    } else {
+      pImpl->CreateTangents(pImpl->SharpenEdges(minSharpAngle, minSmoothness));
+    }
+  }
+  return Manifold(std::make_shared<CsgLeafNode>(pImpl));
+}
+
+/**
  * Increase the density of the mesh by splitting every edge into n pieces. For
- * instance, with n = 2, each triangle will be split into 4 triangles. These
- * will all be coplanar (and will not be immediately collapsed) unless the
- * Mesh/Manifold has halfedgeTangents specified (e.g. from the Smooth()
- * constructor), in which case the new vertices will be moved to the
- * interpolated surface according to their barycentric coordinates.
+ * instance, with n = 2, each triangle will be split into 4 triangles. Quads
+ * will ignore their interior triangle bisector. These will all be coplanar (and
+ * will not be immediately collapsed) unless the Mesh/Manifold has
+ * halfedgeTangents specified (e.g. from the Smooth() constructor), in which
+ * case the new vertices will be moved to the interpolated surface according to
+ * their barycentric coordinates.
  *
  * @param n The number of pieces to split every edge into. Must be > 1.
  */
@@ -678,7 +757,8 @@ Manifold Manifold::Refine(int n) const {
  * roughly the input length. Interior verts are added to keep the rest of the
  * triangulation edges also of roughly the same length. If halfedgeTangents are
  * present (e.g. from the Smooth() constructor), the new vertices will be moved
- * to the interpolated surface according to their barycentric coordinates.
+ * to the interpolated surface according to their barycentric coordinates. Quads
+ * will ignore their interior triangle bisector.
  *
  * @param length The length that edges will be broken down to.
  */
@@ -880,5 +960,22 @@ Manifold Manifold::Hull() const { return Hull(GetMesh().vertPos); }
  */
 Manifold Manifold::Hull(const std::vector<Manifold>& manifolds) {
   return Compose(manifolds).Hull();
+}
+
+/**
+ * Returns the minimum gap between two manifolds. Returns a float between
+ * 0 and searchLength.
+ *
+ * @param other The other manifold to compute the minimum gap to.
+ * @param searchLength The maximum distance to search for a minimum gap.
+ */
+float Manifold::MinGap(const Manifold& other, float searchLength) const {
+  auto intersect = *this ^ other;
+  auto prop = intersect.GetProperties();
+
+  if (prop.volume != 0) return 0.0f;
+
+  return GetCsgLeafNode().GetImpl()->MinGap(*other.GetCsgLeafNode().GetImpl(),
+                                            searchLength);
 }
 }  // namespace manifold

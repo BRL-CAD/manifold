@@ -38,6 +38,7 @@ export function setMinCircularAngle(angle: number): void;
 export function setMinCircularEdgeLength(length: number): void;
 export function setCircularSegments(segments: number): void;
 export function getCircularSegments(radius: number): number;
+export function resetToCircularDefaults(): void;
 ///@}
 
 export class CrossSection {
@@ -560,6 +561,37 @@ export class Manifold {
   warp(warpFunc: (vert: Vec3) => void): Manifold;
 
   /**
+   * Smooths out the Manifold by filling in the halfedgeTangent vectors. The
+   * geometry will remain unchanged until Refine or RefineToLength is called to
+   * interpolate the surface. This version uses the supplied vertex normal
+   * properties to define the tangent vectors.
+   *
+   * @param normalIdx The first property channel of the normals. NumProp must be
+   * at least normalIdx + 3. Any vertex where multiple normals exist and don't
+   * agree will result in a sharp edge.
+   */
+  smoothByNormals(normalIdx: number): Manifold;
+
+  /**
+   * Smooths out the Manifold by filling in the halfedgeTangent vectors. The
+   * geometry will remain unchanged until Refine or RefineToLength is called to
+   * interpolate the surface. This version uses the geometry of the triangles
+   * and pseudo-normals to define the tangent vectors.
+   *
+   * @param minSharpAngle degrees, default 60. Any edges with angles greater
+   * than this value will remain sharp. The rest will be smoothed to G1
+   * continuity, with the caveat that flat faces of three or more triangles will
+   * always remain flat. With a value of zero, the model is faceted, but in this
+   * case there is no point in smoothing.
+   *
+   * @param minSmoothness range: 0 - 1, default 0. The smoothness applied to
+   * sharp angles. The default gives a hard edge, while values > 0 will give a
+   * small fillet on these sharp edges. A value of 1 is equivalent to a
+   * minSharpAngle of 180 - all edges will be smooth.
+   */
+  smoothOut(minSharpAngle?: number, minSmoothness?: number): Manifold;
+
+  /**
    * Increase the density of the mesh by splitting every edge into n pieces. For
    * instance, with n = 2, each triangle will be split into 4 triangles. These
    * will all be coplanar (and will not be immediately collapsed) unless the
@@ -617,6 +649,24 @@ export class Manifold {
    *     specified.
    */
   calculateCurvature(gaussianIdx: number, meanIdx: number): Manifold;
+
+  /**
+   * Fills in vertex properties for normal vectors, calculated from the mesh
+   * geometry. Flat faces composed of three or more triangles will remain flat.
+   *
+   * @param normalIdx The property channel in which to store the X
+   * values of the normals. The X, Y, and Z channels will be sequential. The
+   * property set will be automatically expanded to include up through normalIdx
+   * + 2.
+   *
+   * @param minSharpAngle Any edges with angles greater than this value will
+   * remain sharp, getting different normal vector properties on each side of
+   * the edge. By default, no edges are sharp and all normals are shared. With a
+   * value of zero, the model is faceted and all normals match their triangle
+   * normals, but in this case it would be better not to calculate normals at
+   * all.
+   */
+  calculateNormals(normalIdx: number, minSharpAngle: number): Manifold;
 
   // Boolean Operations
 
@@ -808,6 +858,13 @@ export class Manifold {
    * == 0.
    */
   getProperties(): Properties;
+
+
+  /*
+   * Returns the minimum gap between two manifolds. Returns a float between
+   * 0 and searchLength.
+   */
+  minGap(other: Manifold, searchLength: number): number;
 
   // Export
 

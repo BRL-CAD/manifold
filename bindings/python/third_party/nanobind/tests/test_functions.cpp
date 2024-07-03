@@ -21,8 +21,8 @@ NB_MODULE(test_functions_ext, m) {
     m.def("test_01", []() { });
 
     // Simple binary function (via function pointer)
-    auto test_02 = [](int j, int k) -> int { return j - k; };
-    m.def("test_02", (int (*)(int, int)) test_02, "j"_a = 8, "k"_a = 1);
+    auto test_02 = [](int up, int down) -> int { return up - down; };
+    m.def("test_02", (int (*)(int, int)) test_02, "up"_a = 8, "down"_a = 1);
 
     // Simple binary function with capture object
     int i = 42;
@@ -34,7 +34,16 @@ NB_MODULE(test_functions_ext, m) {
 
     // Overload chain with two docstrings
     m.def("test_05", [](int) -> int { return 1; }, "doc_1");
+    nb::object first_overload = m.attr("test_05");
     m.def("test_05", [](float) -> int { return 2; }, "doc_2");
+#if !defined(PYPY_VERSION)
+    // Make sure we don't leak the previous member of the overload chain
+    // (pypy's refcounts are bogus and will not help us with this check)
+    if (first_overload.ptr()->ob_refcnt != 1) {
+        throw std::runtime_error("Overload was leaked!");
+    }
+#endif
+    first_overload.reset();
 
     /// Function raising an exception
     m.def("test_06", []() { throw std::runtime_error("oops!"); });
@@ -124,8 +133,10 @@ NB_MODULE(test_functions_ext, m) {
     });
 
     // Overload chain with a raw docstring that has precedence
-    m.def("test_08", [](int) -> int { return 1; }, "ignored");
-    m.def("test_08", [](float) -> int { return 2; }, nb::raw_doc("raw"));
+    m.def("test_08", [](int) -> int { return 1; }, "first docstring");
+    m.def("test_08", [](float) -> int { return 2; },
+          nb::sig("def test_08(x: typing.Annotated[float, 'foo']) -> int"),
+          "another docstring");
 
     // Manual type check
     m.def("test_09", [](nb::type_object t) -> bool { return t.is(&PyBool_Type); });
@@ -143,10 +154,10 @@ NB_MODULE(test_functions_ext, m) {
     });
 
     // Test implicit conversion of various types
-    m.def("test_11_sl",  [](signed long x)      { return x; });
-    m.def("test_11_ul",  [](unsigned long x)        { return x; });
-    m.def("test_11_sll", [](signed long long x) { return x; });
-    m.def("test_11_ull", [](unsigned long long x)   { return x; });
+    m.def("test_11_sl",  [](signed long x)        { return x; });
+    m.def("test_11_ul",  [](unsigned long x)      { return x; });
+    m.def("test_11_sll", [](signed long long x)   { return x; });
+    m.def("test_11_ull", [](unsigned long long x) { return x; });
 
     // Test string caster
     m.def("test_12", [](const char *c) { return nb::str(c); });
@@ -154,10 +165,11 @@ NB_MODULE(test_functions_ext, m) {
     m.def("test_14", [](nb::object o) -> const char * { return nb::cast<const char *>(o); });
 
     // Test bytes type
-    m.def("test_15", [](nb::bytes o) -> const char * { return o.c_str(); });
-    m.def("test_16", [](const char *c) { return nb::bytes(c); });
-    m.def("test_17", [](nb::bytes c) { return c.size(); });
-    m.def("test_18", [](const char *c, int size) { return nb::bytes(c, size); });
+    m.def("test_15",   [](nb::bytes o) -> const char * { return o.c_str(); });
+    m.def("test_15_d", [](nb::bytes o) { return nb::bytes(o.data(), o.size()); });
+    m.def("test_16",   [](const char *c) { return nb::bytes(c); });
+    m.def("test_17",   [](nb::bytes c) { return c.size(); });
+    m.def("test_18",   [](const char *c, int size) { return nb::bytes(c, size); });
 
     // Test int type
     m.def("test_19", [](nb::int_ i) { return i + nb::int_(123); });
@@ -239,4 +251,114 @@ NB_MODULE(test_functions_ext, m) {
 
     m.def("test_del_list", [](nb::list l) { nb::del(l[2]); });
     m.def("test_del_dict", [](nb::dict l) { nb::del(l["a"]); });
+
+    static int imut = 10;
+    static const int iconst = 100;
+    m.def("test_ptr_return", []() { return std::make_pair(&imut, &iconst); });
+
+    // These are caught at compile time, uncomment and rebuild to verify:
+
+    // No nb::arg annotations:
+    //m.def("bad_args1", [](nb::args, int) {});
+
+    // kw_only in wrong place (1):
+    //m.def("bad_args2", [](nb::args, int) {}, nb::kw_only(), "args"_a, "i"_a);
+
+    // kw_only in wrong place (2):
+    //m.def("bad_args3", [](nb::args, int) {}, "args"_a, "i"_a, nb::kw_only());
+
+    // kw_only in wrong place (3):
+    //m.def("bad_args4", [](int, nb::kwargs) {}, "i"_a, "kwargs"_a, nb::kw_only());
+
+    // kw_only specified twice:
+    //m.def("bad_args5", [](int, int) {}, nb::kw_only(), "i"_a, nb::kw_only(), "j"_a);
+
+    m.def("test_args_kwonly",
+          [](int i, double j, nb::args args, int z) {
+              return nb::make_tuple(i, j, args, z);
+          }, "i"_a, "j"_a, "args"_a, "z"_a);
+    m.def("test_args_kwonly_kwargs",
+          [](int i, double j, nb::args args, int z, nb::kwargs kwargs) {
+              return nb::make_tuple(i, j, args, z, kwargs);
+          }, "i"_a, "j"_a, "args"_a, nb::kw_only(), "z"_a, "kwargs"_a);
+    m.def("test_kwonly_kwargs",
+          [](int i, double j, nb::kwargs kwargs) {
+              return nb::make_tuple(i, j, kwargs);
+          }, "i"_a, nb::kw_only(), "j"_a, "kwargs"_a);
+
+    m.def("test_kw_only_all",
+          [](int i, int j) { return nb::make_tuple(i, j); },
+          nb::kw_only(), "i"_a, "j"_a);
+    m.def("test_kw_only_some",
+          [](int i, int j, int k) { return nb::make_tuple(i, j, k); },
+          nb::arg(), nb::kw_only(), "j"_a, "k"_a);
+    m.def("test_kw_only_with_defaults",
+          [](int i, int j, int k, int z) { return nb::make_tuple(i, j, k, z); },
+          nb::arg() = 3, "j"_a = 4, nb::kw_only(), "k"_a = 5, "z"_a);
+    m.def("test_kw_only_mixed",
+          [](int i, int j) { return nb::make_tuple(i, j); },
+          "i"_a, nb::kw_only(), "j"_a);
+
+    struct kw_only_methods {
+        kw_only_methods(int _v) : v(_v) {}
+        int v;
+    };
+
+    nb::class_<kw_only_methods>(m, "kw_only_methods")
+        .def(nb::init<int>(), nb::kw_only(), "v"_a)
+        .def_rw("v", &kw_only_methods::v)
+        .def("method_2k",
+             [](kw_only_methods&, int i, int j) { return nb::make_tuple(i, j); },
+             nb::kw_only(), "i"_a = 1, "j"_a = 2)
+        .def("method_1p1k",
+             [](kw_only_methods&, int i, int j) { return nb::make_tuple(i, j); },
+             "i"_a = 1, nb::kw_only(), "j"_a = 2);
+
+    m.def("test_any", [](nb::any a) { return a; } );
+
+    m.def("test_wrappers_list", []{
+        nb::list l1, l2;
+        l1.append(1);
+        l2.append(2);
+        l1.extend(l2);
+
+        bool b = nb::len(l1) == 2 && nb::len(l2) == 1 &&
+            l1[0].equal(nb::int_(1)) && l1[1].equal(nb::int_(2));
+
+        l1.clear();
+        return b && nb::len(l1) == 0;
+    });
+
+    m.def("test_wrappers_dict", []{
+        nb::dict d1, d2;
+        d1["a"] = 1;
+        d2["b"] = 2;
+        d1.update(d2);
+
+        bool b = nb::len(d1) == 2 && nb::len(d2) == 1 &&
+            d1["a"].equal(nb::int_(1)) &&
+            d1["b"].equal(nb::int_(2));
+
+        d1.clear();
+        return b && nb::len(d1) == 0;
+    });
+
+    m.def("test_wrappers_set", []{
+        nb::set s;
+        s.add("a");
+        s.add("b");
+
+        bool b = nb::len(s) == 2 && s.contains("a") && s.contains("b");
+
+        b &= s.discard("a");
+        b &= !s.discard("q");
+
+        b &= !s.contains("a") && s.contains("b");
+        s.clear();
+        b &= s.size() == 0;
+
+        return b;
+    });
+
+    m.def("hash_it", [](nb::handle h) { return nb::hash(h); });
 }

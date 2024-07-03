@@ -38,7 +38,7 @@ welcomed in pybind11, but they will likely be rejected in this project.
 An overview of removed features is provided in a :ref:`separate section
 <removed>`. Besides feature removal, the rewrite was also an opportunity to
 address :ref:`long-standing performance issues <perf_improvements>` and add a
-number of :ref:`major quality-of-live improvements <major_additions>` and
+number of :ref:`major quality-of-life improvements <major_additions>` and
 :ref:`smaller features <minor_additions>`.
 
 .. _perf_improvements:
@@ -103,7 +103,7 @@ performance improvements:
 Major additions
 ---------------
 
-nanobind includes a number of quality-of-live improvements for developers:
+nanobind includes a number of quality-of-life improvements for developers:
 
 - **N-dimensional arrays**: nanobind can exchange data with modern array programming
   frameworks. It uses either `DLPack <https://github.com/dmlc/dlpack>`_ or the
@@ -119,6 +119,16 @@ nanobind includes a number of quality-of-live improvements for developers:
   Python without having to compile separate binaries per interpreter. That
   vision is still relatively far out, however: it will require Python 3.12+ to
   be widely deployed.
+
+- **Stub generation**: nanobind ships with a custom :ref:`stub generator
+  <stubs>` and CMake integration to automatically create high quality stubs as
+  part of the build process. `Stubs
+  <https://typing.readthedocs.io/en/latest/source/stubs.html>`__ make compiled
+  extension code compatible with visual autocomplete in editors like `Visual
+  Studio Code <https://code.visualstudio.com>`__ and static type checkers like
+  `MyPy <https://github.com/python/mypy>`__, `PyRight
+  <https://github.com/microsoft/pyright>`__ and `PyType
+  <https://github.com/google/pytype>`__.
 
 - **Leak warnings**: When the Python interpreter shuts down, nanobind reports
   instance, type, and function leaks related to bindings, which is useful for
@@ -183,30 +193,35 @@ The following lists minor-but-useful additions relative to pybind11.
   overload when the underlying Python type object is a subtype of the C++ type
   ``T``.
 
-- **Raw docstrings**: In cases where absolute control over docstrings is
-  required (for example, so that complex cases can be parsed by a tool like
-  `Sphinx <https://www.sphinx-doc.org>`__), the :cpp:class:`nb::raw_doc`
-  attribute can be specified to functions. In this case, nanobind will *skip*
-  generation of a combined docstring that enumerates overloads along with type
-  information.
+  Finally, the :cpp:class:`nb::typed\<T, Ts...\> <typed>` annotation can 
+  parameterize any other type. The feature exists to improve the
+  expressiveness of type signatures (e.g., to turn ``list`` into
+  ``list[int]``). Note, however, that nanobind does not perform additional
+  runtime checks in this case. Please see the section on :ref:`parameterizing
+  generics <typing_generics_parameterizing>` for further details.
 
-  Example:
+- **Signature overrides**: it may sometimes be necessary to tweak the
+  type signature of a class or function to provide richer type information to
+  static type checkers like `MyPy <https://github.com/python/mypy>`__ or
+  `PyRight <https://github.com/microsoft/pyright>`__. In such cases, specify
+  the :cpp:class:`nb::sig <signature>` attribute to override the default
+  nanobind-provided signature.
+
+  For example, the following function signature annotation creates an overload
+  that should only be called with an ``1``-valued integer literal. While the
+  function also includes a runtime check, a static type checker can now ensure
+  that this error condition cannot possibly be triggered by a given piece of code.
 
   .. code-block:: cpp
 
-     m.def("identity", [](float arg) { return arg; });
-     m.def("identity", [](int arg) { return arg; },
-           nb::raw_doc(
-               "identity(arg)\n"
-               "An identity function for integers and floats\n"
-               "\n"
-               "Args:\n"
-               "    arg (float | int): Input value\n"
-               "\n"
-               "Returns:\n"
-               "    float | int: Result of the identity operation"));
+     m.def("f",
+           [](int arg) {
+               if (arg != 1)
+                  nb::raise("invalid input");
+               return arg;
+           },
+           nb::sig("def f(arg: typing.Literal[1], /) -> int"));
 
-  Writing detailed docstrings in this way is rather tedious. In practice, they
-  would usually be extracted from C++ headers using a tool like `pybind11_mkdoc
-  <https://github.com/pybind/pybind11_mkdoc>`_ (which also works fine with
-  nanobind despite the name).
+  Please see the section on :ref:`customizing function signatures
+  <typing_signature_functions>` and :ref:`class signatures
+  <typing_signature_classes>` for further details.

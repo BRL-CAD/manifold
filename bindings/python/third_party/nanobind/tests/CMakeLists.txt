@@ -1,5 +1,5 @@
 # If leaks are found, abort() during interpreter shutdown to catch this in the CI
-add_definitions(-DNB_ABORT_ON_LEAK=1)
+add_definitions(-DNB_ABORT_ON_LEAK)
 
 if (NB_TEST_STABLE_ABI)
   set(NB_EXTRA_ARGS ${NB_EXTRA_ARGS} STABLE_ABI)
@@ -21,6 +21,12 @@ if (UNIX AND (CMAKE_SIZEOF_VOID_P EQUAL 4) AND (CMAKE_SYSTEM_PROCESSOR STREQUAL 
   add_compile_options(-mfpmath=sse -msse2)
 endif()
 
+if (NB_TEST_SANITIZE)
+  add_compile_options(-fsanitize=address,undefined)
+  add_link_options(-fsanitize=address,undefined)
+endif()
+
+
 nanobind_add_module(test_functions_ext test_functions.cpp ${NB_EXTRA_ARGS})
 nanobind_add_module(test_classes_ext test_classes.cpp ${NB_EXTRA_ARGS})
 nanobind_add_module(test_holders_ext test_holders.cpp ${NB_EXTRA_ARGS})
@@ -34,7 +40,40 @@ nanobind_add_module(test_ndarray_ext test_ndarray.cpp ${NB_EXTRA_ARGS})
 nanobind_add_module(test_intrusive_ext test_intrusive.cpp test_intrusive_impl.cpp ${NB_EXTRA_ARGS})
 nanobind_add_module(test_exception_ext test_exception.cpp ${NB_EXTRA_ARGS})
 nanobind_add_module(test_make_iterator_ext test_make_iterator.cpp ${NB_EXTRA_ARGS})
+nanobind_add_module(test_typing_ext test_typing.cpp ${NB_EXTRA_ARGS})
 nanobind_add_module(test_issue_ext test_issue.cpp ${NB_EXTRA_ARGS})
+
+foreach (NAME functions classes ndarray stl enum typing make_iterator)
+  if (NAME STREQUAL typing)
+    set(EXTRA
+      MARKER_FILE py.typed
+      PATTERN_FILE "${CMAKE_CURRENT_SOURCE_DIR}/pattern_file.nb"
+    )
+  else()
+    set(EXTRA "")
+  endif()
+
+  if (CMAKE_CONFIGURATION_TYPES)
+    # On multi-config generators like Visual Studio, put stubs in the 'Debug' / 'Release' /.. folders
+    set(PYI_PREFIX $<CONFIG>/)
+  endif()
+
+  nanobind_add_stub(
+    ${NAME}_ext_stub
+    MODULE test_${NAME}_ext
+    OUTPUT ${PYI_PREFIX}test_${NAME}_ext.pyi
+    PYTHON_PATH $<TARGET_FILE_DIR:test_${NAME}_ext>
+    DEPENDS test_${NAME}_ext
+    ${EXTRA})
+endforeach()
+
+nanobind_add_stub(
+  py_stub
+  MODULE py_stub_test
+  OUTPUT ${PYI_PREFIX}py_stub_test.pyi
+  PYTHON_PATH $<TARGET_FILE_DIR:test_stl_ext>
+  DEPENDS py_stub_test.py
+)
 
 find_package (Eigen3 3.3.1 NO_MODULE)
 if (TARGET Eigen3::Eigen)
@@ -75,10 +114,23 @@ set(TEST_FILES
   test_stl_bind_vector.py
   test_chrono.py
   test_ndarray.py
+  test_stubs.py
+  test_typing.py
+
+  # Stub reference files
+  test_classes_ext.pyi.ref
+  test_functions_ext.pyi.ref
+  test_make_iterator_ext.pyi.ref
+  test_ndarray_ext.pyi.ref
+  test_stl_ext.pyi.ref
+  test_enum_ext.pyi.ref
+  test_typing_ext.pyi.ref
+  py_stub_test.py
+  py_stub_test.pyi.ref
 )
 
 if (NOT (CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_CURRENT_BINARY_DIR) OR MSVC)
-  if (MSVC)
+  if (CMAKE_CONFIGURATION_TYPES)
     set(OUT_DIR ${CMAKE_CURRENT_BINARY_DIR}/$<CONFIG>)
   else()
     set(OUT_DIR ${CMAKE_CURRENT_BINARY_DIR})
@@ -89,7 +141,7 @@ if (NOT (CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_CURRENT_BINARY_DIR) OR MSVC)
     set(OUT_FILE ${OUT_DIR}/${TEST_FILE})
     set(TEST_FILES_OUT ${TEST_FILES_OUT} ${OUT_FILE})
     add_custom_command(
-      DEPENDS ${IN_FILE} TARGET OUTPUT ${OUT_FILE}
+      DEPENDS ${IN_FILE} OUTPUT ${OUT_FILE}
       COMMAND ${CMAKE_COMMAND} -E copy_if_different ${IN_FILE} ${OUT_DIR})
   endforeach()
 

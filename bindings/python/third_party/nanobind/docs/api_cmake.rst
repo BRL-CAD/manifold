@@ -8,6 +8,19 @@ modules. This is needed because quite a few steps are involved: nanobind must
 build the module, a library component, link the two together, and add a
 different set of compilation and linker flags depending on the target platform.
 
+If you prefer another build system, then you have the following options:
+
+- `Nicholas Junge <https://github.com/nicholasjng>`__ has created a `Bazel
+  interface <https://github.com/nicholasjng/nanobind-Bazel>`__ to nanobind.
+  Please report Bazel-specific issues there.
+
+- You could create a new build system from scratch that takes care of these
+  steps. See `this file
+  <https://github.com/wjakob/nanobind/blob/master/src/nb_combined.cpp>`__ for
+  inspiration on how to do this on Linux. Note that you will be on your own if
+  you choose to go this route---I unfortunately do not have the time to respond
+  to GitHub tickets related to custom build systems.
+
 The section on :ref:`building extensions <building>` provided an introductory
 example of how to set up a basic build system via the
 :cmake:command:`nanobind_add_module` command, which is the :ref:`high level
@@ -16,6 +29,11 @@ somewhat opinionated, however. For this reason, nanobind also provides an
 alternative :ref:`low level <lowlevel-cmake>` interface that decomposes it into
 smaller steps.
 
+A later part of this section explains how a Git submodule dependency can be
+:ref:`avoided <submodule_deps>` in exchange for a system-provided package.
+
+Finally, the section ends with an explanation of the CMake convenience
+interface for :ref:`stub generation <stub_generation_cmake>`.
 
 .. _highlevel-cmake:
 
@@ -351,3 +369,104 @@ The various commands are described below:
 
       nanobind_musl_static_libcpp(my_target)
 
+.. _submodule_deps:
+
+Submodule dependencies
+----------------------
+
+nanobind includes a dependency (a fast hash map named ``tsl::robin_map``) as a
+Git submodule. If you prefer to use another (e.g., system-provided) version of
+this dependency, set the ``NB_USE_SUBMODULE_DEPS`` variable before importing
+nanobind into CMake. In this case, nanobind's CMake scripts will internally
+invoke ``find_dependency(tsl-robin-map)`` to locate the associated header
+files.
+
+.. _stub_generation_cmake:
+
+Stub generation
+---------------
+
+Nanobind's CMake tooling includes a convenience command to interface with the
+``stubgen`` program explained in the section on :ref:`stub generation <stubs>`.
+
+.. cmake:command:: nanobind_add_stub
+
+   Import the specified module (``MODULE`` parameter), generate a stub, and
+   write it to the specified file (``OUTPUT`` parameter). Here is an example
+   use:
+
+   .. code-block:: cmake
+
+      nanobind_add_stub(
+          my_ext_stub
+          MODULE my_ext
+          OUTPUT my_ext.pyi
+          PYTHON_PATH $<TARGET_FILE_DIR:my_ext>
+          DEPENDS my_ext
+      )
+
+   The target name (``my_ext_stub`` in this example) must be unique but has no
+   other significance.
+
+   ``stubgen`` will add all paths specified as part of the ``PYTHON_PATH``
+   block and then execute ``import my_ext`` in a Python session. If the
+   extension is not importable, this will cause stub generation to fail.
+
+   This command supports the following parameters:
+
+   .. list-table::
+
+      * - ``INSTALL_TIME``
+        - By default, stub generation takes place at build time following
+          generation of all dependencies (see ``DEPENDS``). When this parameter
+          is specified, stub generation is instead postponed to the
+          installation phase.
+      * - ``MODULE``
+        - Specifies the name of the module that should be imported. Mandatory.
+      * - ``OUTPUT``
+        - Specifies the name of the stub file that should be written. The path
+          is relative to ``CMAKE_CURRENT_BINARY_DIR`` for build-time stub
+          generation and relative to ``CMAKE_INSTALL_PREFIX`` for install-time
+          stub generation. Mandatory.
+      * - ``PYTHON_PATH``
+        - List of search paths that should be considered when importing the
+          module. The paths are relative to ``CMAKE_CURRENT_BINARY_DIR`` for
+          build-time stub generation and relative to ``CMAKE_INSTALL_PREFIX``
+          for install-time stub generation. The current directory (``"."``) is
+          always included and does not need to be specified. The parameter may
+          contain CMake `generator expressions
+          <https://cmake.org/cmake/help/latest/manual/cmake-generator-expressions.7.html>`__
+          when :cmake:command:`nanobind_add_stub` is used for build-time stub
+          generation. Otherwise, generator expressions should not be used.
+          Optional.
+      * - ``DEPENDS``
+        - Any targets listed here will be marked as a dependencies. This should
+          generally be used to list the target names of one or more prior
+          :cmake:command:`nanobind_add_module` declarations. Note that this
+          parameter tracks *build-time* dependencies and does not need to be
+          specified when stub generation occurs at install time (see
+          ``INSTALL_TIME``). Optional.
+      * - ``VERBOSE``
+        - Show status messages generated by ``stubgen``.
+      * - ``EXCLUDE_DOCSTRINGS``
+        - Generate a stub containing only typed signatures without docstrings.
+      * - ``INCLUDE_PRIVATE``
+        - Also include private members, whose names begin or end with a single
+          underscore.
+      * - ``MARKER_FILE``
+        - Typed extensions normally identify themselves via the presence of an
+          empty file named ``py.typed`` in each module directory. When this
+          parameter is specified, :cmake:command:`nanobind_add_stub` will
+          automatically generate such an empty file as well.
+      * - ``PATCH_FILE``
+        - Specify a patch file used to replace declarations in the stub. The
+          syntax is described in the section on :ref:`stub generation <stubs>`.
+      * - ``COMPONENT``
+        - Specify a component when ``INSTALL_TIME`` stub generation is used.
+          This is analogous to ``install(..., COMPONENT [name])`` in other
+          install targets.
+      * - ``EXCLUDE_FROM_ALL``
+        - If specified, the file is only installed as part of a
+          component-specific installation when ``INSTALL_TIME`` stub generation
+          is used. This is analogous to ``install(..., EXCLUDE_FROM_ALL)`` in
+          other install targets.

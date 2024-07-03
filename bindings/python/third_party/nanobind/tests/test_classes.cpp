@@ -1,10 +1,12 @@
 #include <nanobind/nanobind.h>
 #include <nanobind/trampoline.h>
 #include <nanobind/operators.h>
+#include <nanobind/stl/optional.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/pair.h>
 #include <nanobind/stl/shared_ptr.h>
 #include <nanobind/stl/tuple.h>
+#include <map>
 #include <memory>
 #include <cstring>
 #include <vector>
@@ -90,6 +92,32 @@ struct Wrapper {
     std::shared_ptr<Wrapper> value;
 };
 
+struct StructWithWeakrefs : Struct { };
+
+struct StructWithWeakrefsAndDynamicAttrs : Struct { };
+
+struct UniqueInt {
+    static std::map<int, std::weak_ptr<UniqueInt>> instances;
+
+    static std::shared_ptr<UniqueInt> make(int val) {
+        std::weak_ptr<UniqueInt>& entry = instances[val];
+        std::shared_ptr<UniqueInt> ret = entry.lock();
+        if (!ret) {
+            entry = ret = std::shared_ptr<UniqueInt>(new UniqueInt(val));
+        }
+        ++ret->nlook;
+        return ret;
+    }
+    int value() const { return val; }
+    int lookups() const { return nlook; }
+
+  private:
+    UniqueInt(int v) : val(v) {}
+    int val;
+    int nlook = 0;
+};
+std::map<int, std::weak_ptr<UniqueInt>> UniqueInt::instances;
+
 int wrapper_tp_traverse(PyObject *self, visitproc visit, void *arg) {
     Wrapper *w = nb::inst_ptr<Wrapper>(self);
 
@@ -140,7 +168,7 @@ NB_MODULE(test_classes_ext, m) {
 
     nb::class_<PairStruct>(m, "PairStruct")
         .def(nb::init<>())
-        .def_rw("s1", &PairStruct::s1)
+        .def_rw("s1", &PairStruct::s1, "A documented property")
         .def_rw("s2", &PairStruct::s2);
 
     m.def("stats", []{
@@ -171,7 +199,7 @@ NB_MODULE(test_classes_ext, m) {
 
     // test06_big
 
-    nb::class_<Big>(m, "Big")
+    nb::class_<Big>(m, "Big", "A class\nwith a multi-line\ndocstring..")
         .def(nb::init<>());
 
     nb::class_<BigAligned>(m, "BigAligned")
@@ -235,8 +263,8 @@ NB_MODULE(test_classes_ext, m) {
     struct Foo { };
 
     auto animal = nb::class_<Animal, PyAnimal>(m, "Animal")
-        .def(nb::init<>())
-        .def("name", &Animal::name)
+        .def(nb::init<>(), "A constructor")
+        .def("name", &Animal::name, "A method")
         .def("what", &Animal::what);
 
     nb::class_<Dog, Animal, PyDog>(m, "Dog")
@@ -265,7 +293,7 @@ NB_MODULE(test_classes_ext, m) {
     // test11_large_pointers
     nb::class_<Foo>(m, "Foo");
     m.def("i2p", [](uintptr_t x) { return (Foo *) x; }, nb::rv_policy::reference);
-    m.def("p2i", [](Foo *x) { return (uintptr_t) x; });
+    m.def("p2i", [](Foo *x) { return (uintptr_t) x; }, "x"_a = nullptr);
 
     // test12_implicitly_convertible
     struct A { int a; };
@@ -279,6 +307,9 @@ NB_MODULE(test_classes_ext, m) {
         D(C c) : value(c.c + 1000) { }
         D(int d) : value(d + 10000) { }
         D(float) : value(0) { throw std::runtime_error("Fail!"); }
+        D(std::nullptr_t) : value(0) {}
+        // notice dangling access:
+        ~D() { static_cast<volatile int&>(value) = -100; }
         int value;
     };
 
@@ -302,11 +333,43 @@ NB_MODULE(test_classes_ext, m) {
         .def_rw("value", &D::value);
 
     m.def("get_d", [](const D &d) { return d.value; });
+    m.def("get_optional_d", [](std::optional<const D*> arg) {
+        return arg ? arg.value()->value : -1;
+    }, nb::arg().none());
+    m.def("get_d_via_cast", [](nb::object obj) {
+        int by_val = -1, by_ptr = -1, by_opt_val = -1, by_opt_ptr = -1;
+        try {
+            by_val = nb::cast<D>(obj).value;
+        } catch (const nb::cast_error&) {}
+        try {
+            by_ptr = nb::cast<D*>(obj)->value;
+        } catch (const nb::cast_error&) {}
+        try {
+            by_opt_val = nb::cast<std::optional<D>>(obj)->value;
+        } catch (const nb::cast_error&) {}
+        try {
+            by_opt_ptr = nb::cast<std::optional<D*>>(obj).value()->value;
+        } catch (const nb::cast_error&) {}
+        return nb::make_tuple(by_val, by_ptr, by_opt_val, by_opt_ptr);
+    });
+    m.def("get_d_via_try_cast", [](nb::object obj) {
+        int by_val = -1, by_ptr = -1, by_opt_val = -1, by_opt_ptr = -1;
+        if (D val(nullptr); nb::try_cast(obj, val))
+            by_val = val.value;
+        if (D* ptr; nb::try_cast(obj, ptr))
+            by_ptr = ptr->value;
+        if (std::optional<D> opt_val; nb::try_cast(obj, opt_val))
+            by_opt_val = opt_val->value;
+        if (std::optional<D*> opt_ptr; nb::try_cast(obj, opt_ptr))
+            by_opt_ptr = opt_ptr.value()->value;
+        return nb::make_tuple(by_val, by_ptr, by_opt_val, by_opt_ptr);
+    });
 
     struct Int {
         int i;
         Int operator+(Int o) const { return {i + o.i}; }
         Int operator-(float j) const { return {int(i - j)}; }
+        bool operator==(Int o) const { return i == o.i; }
         Int &operator+=(Int o) {
             i += o.i;
             return *this;
@@ -337,8 +400,8 @@ NB_MODULE(test_classes_ext, m) {
     nb::class_<MyClass> mcls(m, "MyClass");
     nb::class_<MyClass::NestedClass> ncls(mcls, "NestedClass");
     mcls.def(nb::init<>());
-    mcls.def("f", []{});
-    ncls.def("f", []{});
+    mcls.def("f", [](MyClass&){});
+    ncls.def("f", [](MyClass::NestedClass&){});
 
     // test18_static_properties
     nb::class_<StaticProperties>(m, "StaticProperties")
@@ -500,20 +563,20 @@ NB_MODULE(test_classes_ext, m) {
         Struct s;
         bool rv = nb::try_cast<Struct>(h, s);
         return std::make_pair(rv, std::move(s));
-    });
+    }, nb::arg().none());
 
     m.def("try_cast_2", [](nb::handle h) {
         Struct s;
         Struct &s2 = s;
         bool rv = nb::try_cast<Struct &>(h, s2);
         return std::make_pair(rv, std::move(s2));
-    });
+    }, nb::arg().none());
 
     m.def("try_cast_3", [](nb::handle h) {
         Struct *sp = nullptr;
         bool rv = nb::try_cast<Struct *>(h, sp);
         return std::make_pair(rv, sp);
-    }, nb::rv_policy::none);
+    }, nb::arg().none(), nb::rv_policy::none);
 
     m.def("try_cast_4", [](nb::handle h) {
         int i = 0;
@@ -554,4 +617,44 @@ NB_MODULE(test_classes_ext, m) {
         "get_incrementing_struct_value",
         [](IncrementingStruct &s) { return new Struct(s.i + 100); },
         nb::keep_alive<0, 1>());
+
+    nb::class_<StructWithWeakrefs, Struct>(m, "StructWithWeakrefs", nb::is_weak_referenceable())
+        .def(nb::init<int>());
+
+    nb::class_<StructWithWeakrefsAndDynamicAttrs, Struct>(m, "StructWithWeakrefsAndDynamicAttrs",
+               nb::is_weak_referenceable(), nb::dynamic_attr())
+        .def(nb::init<int>());
+
+    union Union {
+        int i;
+        float f;
+    };
+    nb::class_<Union>(m, "Union")
+        .def(nb::init<>())
+        .def_rw("i", &Union::i)
+        .def_rw("f", &Union::f);
+
+    struct HiddenBase {
+        int value = 10;
+        int vget() const { return value; }
+        void vset(int v) { value = v; }
+        int get_answer() const { return value * 10; }
+    };
+    struct BoundDerived : HiddenBase {
+        virtual int polymorphic() { return value; }
+    };
+    nb::class_<BoundDerived>(m, "BoundDerived")
+        .def(nb::init<>())
+        .def_rw("value", &BoundDerived::value)
+        .def_prop_rw("prop", &BoundDerived::vget, &BoundDerived::vset)
+        .def("get_answer", &BoundDerived::get_answer)
+        .def("polymorphic", &BoundDerived::polymorphic);
+
+    nb::class_<UniqueInt>(m, "UniqueInt")
+        .def(nb::new_(&UniqueInt::make))
+        .def(nb::new_([](std::string s) {
+            return UniqueInt::make(std::atoi(s.c_str()));
+        }))
+        .def("value", &UniqueInt::value)
+        .def("lookups", &UniqueInt::lookups);
 }

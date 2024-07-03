@@ -169,14 +169,14 @@ STL vector bindings
 -------------------
 
 The following function can be used to expose ``std::vector<...>`` variants
-in Python. It is not part of the core nanobind API and require an additional
+in Python. It is not part of the core nanobind API and requires an additional
 include directive:
 
 .. code-block:: cpp
 
    #include <nanobind/stl/bind_vector.h>
 
-.. cpp:function:: template <typename Vector, typename... Args> class_<Vector> bind_vector(handle scope, const char * name, Args &&...args)
+.. cpp:function:: template <typename Vector, rv_policy Policy = rv_policy::automatic_reference, typename... Args> class_<Vector> bind_vector(handle scope, const char * name, Args &&...args)
 
    Bind the STL vector-derived type `Vector` to the identifier `name` and
    place it in `scope` (e.g., a :cpp:class:`module_`). The variable argument
@@ -217,7 +217,7 @@ include directive:
         - Assign an element in the list (supports negative indexing)
       * - ``__delitem__(self, arg: int)``
         - Delete an item from the list (supports negative indexing)
-      * - ``__setitem__(self, arg: slice) -> Vector``
+      * - ``__getitem__(self, arg: slice) -> Vector``
         - Slice-based getter
       * - ``__setitem__(self, arg0: slice, arg1: Value)``
         - Slice-based assignment
@@ -246,6 +246,136 @@ include directive:
    The binding operation is a no-op if the vector type has already been
    registered with nanobind.
 
+   .. warning::
+
+      While this function creates a type resembling a Python ``list``, it has a
+      major caveat: the item accessor ``__getitem__`` copies the accessed
+      element by default (the bottom of this paragraph explains how this copy
+      can be avoided).
+
+      Consequently, writes to elements may not propagate in the expected way.
+      Consider the following C++ bindings:
+
+      .. code-block:: cpp
+
+         struct A {
+             int value;
+         };
+
+         nb::class_<A>(m, "A")
+             .def(nb::init<int>())
+             .def_rw("value", &A::value);
+
+         nb::bind_vector<std::vector<A>>(m, "VecA");
+
+      On the Python end, they yield the following surprising behavior:
+
+      .. code-block:: python
+
+         from my_ext import A, VecA
+
+         va = VecA()
+         va.append(A(123))
+         a[0].value = 456
+         assert a[0].value == 456 # <-- assertion fails!
+
+      To actually modify ``va``, another write is needed.
+
+      .. code-block:: python
+
+         v = a[0]
+         v.value = 456
+         a[0] = v
+
+      This may seem like a strange design, so it is worth explaining why the
+      implementation works in this way.
+
+      The key issue is that any particular value (e.g., ``va[0]``) lies within
+      a memory buffer managed by the ``std::vector``. It is not safe for
+      nanobind to refer to objects within this buffer using their absolute or
+      relative memory address. For example, inserting an element at position 0
+      will rearrange the buffer's contents and shift all subsequent ``A``
+      instances. If nanobind ``A`` objects could be "views" into the
+      ``std::vector``, then an insertion would cause the contents of unrelated
+      ``A`` Python objects to change unexpectedly. Insertion may also require
+      reallocation of the buffer, invalidating all current addresses, and this
+      could lead to undefined behavior (use-after-free) if nanobind did not
+      make a copy.
+
+      There are three situations in which the surprising behavior is avoided:
+
+      1. If the modification of the array is performed using in-place
+         operations like
+
+         .. code-block:: python
+
+            v[i] += 5
+
+         In-place operators automatically perform an array assignment, causing
+         the issue to disappear. This means that if you work with a vector type
+         like ``std::vector<int>`` or ``std::vector<std::string>`` with an
+         immutable element type like ``int`` or ``str`` on the Python end, it
+         will behave completely naturally in Python.
+
+      2. If the array contains STL shared pointers (e.g.,
+         ``std::vector<std::shared_ptr<T>>``), the added
+         indirection and ownership tracking removes the need for extra copies.
+
+      3. If the array contains pointers to reference-counted objects (e.g.,
+         ``std::vector<ref<T>>`` via the :cpp:class:`ref` wrapper) and ``T``
+         uses the intrusive reference counting approach explained :ref:`here
+         <intrusive>`, the added indirection and ownership tracking removes the
+         need for extra copies.
+
+         (It is usually unsafe to use this class to bind pointer-valued
+         vectors ``std::vector<T*>`` when ``T`` does not use intrusive
+         reference counting, because then there is nothing to prevent the Python
+         objects returned by ``__getitem__`` from outliving the C++ ``T``
+         objects that they point to. But if you are able to guarantee through
+         other means that the ``T`` objects will live long enough, the intrusive
+         reference counting is not strictly required.)
+
+   .. note::
+
+      Previous versions of nanobind (before 2.0) and pybind11 return Python
+      objects from ``__getitem__`` that wrap *references* (i.e., views),
+      meaning that they are only safe to use until the next insertion or
+      deletion in the vector they were drawn from. As discussed above, any use
+      after that point could **corrupt memory or crash your program**, which is
+      why reference semantics are no longer the default.
+
+      If you truly need the unsafe reference semantics, and if you
+      can guarantee that all use of your bindings will respect
+      the memory layout and reference-invalidation rules of the
+      underlying C++ container type, you can request the old behavior
+      by passing a second template argument of
+      :cpp:enumerator:`rv_policy::reference_internal` to
+      :cpp:func:`bind_vector`. This will override nanobind's usual
+      choice of :cpp:enumerator:`rv_policy::copy` for ``__getitem__``.
+
+      .. code-block:: cpp
+
+         nb::bind_vector<std::vector<MyType>,
+                         nb::rv_policy::reference_internal>(m, "ExampleVec");
+
+      Again, please avoid this if at all possible.
+      It is *very* easy to cause problems if you're not careful, as the
+      following example demonstrates.
+
+      .. code-block:: python
+
+         def looks_fine_but_crashes(vec: ext.ExampleVec) -> None:
+             # Trying to remove all the elements too much older than the last:
+             last = vec[-1]
+             # Even being careful to iterate backwards so we visit each
+             # index only once...
+             for idx in range(len(vec) - 2, -1, -1):
+                 if last.timestamp - vec[idx].timestamp > 5:
+                     del vec[idx]
+                     # Oops! After the first deletion, 'last' now refers to
+                     # uninitialized memory.
+
+
 .. _map_bindings:
 
 STL map bindings
@@ -253,13 +383,13 @@ STL map bindings
 
 The following function can be used to expose ``std::map<...>`` or
 ``std::unordered_map<...>`` variants in Python. It is not part of the core
-nanobind API and require an additional include directive:
+nanobind API and requires an additional include directive:
 
 .. code-block:: cpp
 
    #include <nanobind/stl/bind_map.h>
 
-.. cpp:function:: template <typename Map, typename... Args> class_<Map> bind_map(handle scope, const char * name, Args &&...args)
+.. cpp:function:: template <typename Map, rv_policy Policy = rv_policy::automatic_reference, typename... Args> class_<Map> bind_map(handle scope, const char * name, Args &&...args)
 
    Bind the STL map-derived type `Map` (ordered or unordered) to the identifier
    `name` and place it in `scope` (e.g., a :cpp:class:`module_`). The variable
@@ -314,6 +444,63 @@ nanobind API and require an additional include directive:
    The binding operation is a no-op if the map type has already been
    registered with nanobind.
 
+   The binding routine ideally expects the involved types to be:
+
+   - copy-constructible
+   - copy-assignable
+   - equality-comparable
+
+   If not all of these properties are available, then a subset of the above
+   methods will be omitted. Please refer to ``bind_map.h`` for details on the
+   logic.
+
+   .. warning::
+
+      While this function creates a type resembling a Python ``dict``, it has a
+      major caveat: the item accessor ``__getitem__`` copies the accessed
+      element by default.
+
+      Please refer to the :ref:`STL vector bindings <vector_bindings>` for a
+      discussion of the problem and possible solutions. Everything applies
+      equally to the map case.
+
+   .. note::
+
+      Unlike ``std::vector``, the ``std::map`` and ``std::unordered_map``
+      containers are *node-based*, meaning their elements do have a
+      consistent address for as long as they're stored in the map.
+      (Note that this is generally *not* true of third-party containers
+      with similar interfaces, such as ``absl::flat_hash_map``.)
+
+      If you are binding a node-based container type, and you want
+      ``__getitem__`` to return a reference to the accessed element
+      rather than copying it, it is *somewhat* safer than it would
+      be with :cpp:func:`bind_vector` to use the unsafe workaround
+      discussed there:
+
+      .. code-block:: cpp
+
+         nb::bind_map<std::map<std::string, SomeValue>,
+                      nb::rv_policy::reference_internal>(m, "ExampleMap");
+
+      With a node-based container, the only situation where a reference
+      returned from ``__getitem__`` would be invalidated is if the individual
+      element that it refers to were removed from the map. Unlike with
+      ``std::vector``, additions and removals of *other* elements would
+      not present a danger.
+
+      It is still easy to cause problems if you're not careful, though:
+
+      .. code-block:: python
+
+         def unsafe_pop(map: ext.ExampleMap, key: str) -> ext.SomeValue:
+             value = map[key]
+             del map[key]
+             # Oops! `value` now points to a dangling element. Anything you
+             # do with it now is liable to crash the interpreter.
+             return value  # uh-oh...
+
+
 Unique pointer deleter
 ----------------------
 
@@ -362,7 +549,7 @@ include directive:
 
    #include <nanobind/make_iterator.h>
 
-.. cpp:function:: template <rv_policy Policy = rv_policy::reference_internal, typename Iterator, typename... Extra> iterator make_iterator(handle scope, const char * name, Iterator &&first, Iterator &&last, Extra &&...extra)
+.. cpp:function:: template <rv_policy Policy = rv_policy::automatic_reference, typename Iterator, typename... Extra> auto make_iterator(handle scope, const char * name, Iterator &&first, Iterator &&last, Extra &&...extra)
 
    Create a Python iterator wrapping the C++ iterator represented by the range
    ``[first, last)``. The `Extra` parameter can be used to pass additional
@@ -372,6 +559,10 @@ include directive:
    `name`, which is stored in the given `scope`. Usually, some kind of
    :cpp:class:`keep_alive` annotation is needed to tie the lifetime of the
    parent container to that of the iterator.
+
+   The return value is a typed iterator (:cpp:class:`iterator` wrapped using
+   :cpp:class:`typed`), whose template parameter is given by the type of
+   ``*first``.
 
    Here is an example of what this might look like for a STL vector:
 
@@ -386,31 +577,74 @@ include directive:
                                            v.begin(), v.end());
               }, nb::keep_alive<0, 1>());
 
+   .. note::
 
-.. cpp:function:: template <rv_policy Policy = rv_policy::reference_internal, typename Type, typename... Extra> iterator make_iterator(handle scope, const char * name, Type &value, Extra &&...extra)
+      Pre-2.0 versions of nanobind and pybind11 return *references* (views)
+      into the underlying sequence.
 
-   This convenience wrapper calls the above `make_iterator` variant with
+      This is convenient when
+
+      1. Iterated elements are used to modify the underlying container.
+
+      2. Iterated elements should reflect separately made changes to
+         the underlying container.
+
+      But this strategy is *unsafe* if the allocated memory region or layout
+      of the container could change (e.g., through insertion of removal of
+      elements).
+
+      Because of this, iterators now copy by default. There are two
+      ways to still obtain references to the target elements:
+
+      1. If the iterator is over STL shared pointers, the added indirection and
+         ownership tracking removes the need for extra copies.
+
+      2. If the iterator is over reference-counted objects (e.g., ``ref<T>``
+         via the :cpp:class:`ref` wrapper) and ``T`` uses the intrusive
+         reference counting approach explained :ref:`here <intrusive>`,
+         the added indirection and ownership tracking removes the need
+         for extra copies.
+
+      If you truly need the unsafe reference semantics, and if you can
+      guarantee that all use of your bindings will respect the memory layout
+      and reference-invalidation rules of the underlying C++ container type,
+      you can request the old behavior by passing
+      :cpp:enumerator:`rv_policy::reference_internal` to the ``Policy``
+      template argument of this function.
+
+
+.. cpp:function:: template <rv_policy Policy = rv_policy::automatic_reference, typename Type, typename... Extra> auto make_iterator(handle scope, const char * name, Type &value, Extra &&...extra)
+
+   This convenience wrapper calls the above :cpp:func:`make_iterator` variant with
    ``first`` and ``last`` set to ``std::begin(value)`` and ``std::end(value)``,
    respectively.
 
-.. cpp:function:: template <rv_policy Policy = rv_policy::reference_internal, typename Iterator, typename... Extra> iterator make_key_iterator(handle scope, const char * name, Iterator &&first, Iterator &&last, Extra &&...extra)
+.. cpp:function:: template <rv_policy Policy = rv_policy::automatic_reference, typename Iterator, typename... Extra> iterator make_key_iterator(handle scope, const char * name, Iterator &&first, Iterator &&last, Extra &&...extra)
 
    :cpp:func:`make_iterator` specialization for C++ iterators that return
    key-value pairs. `make_key_iterator` returns the first pair element to
    iterate over keys.
 
+   The return value is a typed iterator (:cpp:class:`iterator` wrapped using
+   :cpp:class:`typed`), whose template parameter is given by the type of
+   ``(*first).first``.
 
-.. cpp:function:: template <rv_policy Policy = rv_policy::reference_internal, typename Iterator, typename... Extra> iterator make_value_iterator(handle scope, const char * name, Iterator &&first, Iterator &&last, Extra &&...extra)
+
+.. cpp:function:: template <rv_policy Policy = rv_policy::automatic_reference, typename Iterator, typename... Extra> iterator make_value_iterator(handle scope, const char * name, Iterator &&first, Iterator &&last, Extra &&...extra)
 
    :cpp:func:`make_iterator` specialization for C++ iterators that return
    key-value pairs. `make_value_iterator` returns the second pair element to
    iterate over values.
 
+   The return value is a typed iterator (:cpp:class:`iterator` wrapped using
+   :cpp:class:`typed`), whose template parameter is given by the type of
+   ``(*first).second``.
+
 N-dimensional array type
 ------------------------
 
 The following type can be used to exchange n-dimension arrays with frameworks
-like NumPy, PyTorch, Tensorflow, JAX, and others. It requires an additional
+like NumPy, PyTorch, Tensorflow, JAX, CuPy, and others. It requires an additional
 include directive:
 
 .. code-block:: cpp
@@ -422,8 +656,11 @@ section <ndarrays>`.
 
 .. cpp:function:: bool ndarray_check(handle h) noexcept
 
-   Test whether the Python object represents an ndarray. Currently, the
-   function considers NumPy, PyTorch, TensorFlow, and XLA arrays.
+   Test whether the Python object represents an ndarray.
+
+   Objects with a ``__dlpack__`` attribute or objects that implement the buffer
+   protocol are considered as ndarray objects. In addition, arrays from NumPy,
+   PyTorch, TensorFlow and XLA are also regarded as ndarrays.
 
 .. cpp:class:: template <typename... Args> ndarray
 
@@ -465,12 +702,12 @@ section <ndarrays>`.
       Move assignment operator. Steals the referenced array without changing reference counts.
       Decreases the reference count of the previously referenced array and potentially destroy it.
 
-   .. cpp:function:: ndarray(void * value, size_t ndim, const size_t * shape, handle owner = nanobind::handle(), const int64_t * strides = nullptr, dlpack::dtype dtype = nanobind::dtype<Scalar>(), int32_t device_type = device::cpu::value, int32_t device_id = 0)
+   .. cpp:function:: ndarray(void * data, size_t ndim, const size_t * shape, handle owner = nanobind::handle(), const int64_t * strides = nullptr, dlpack::dtype dtype = nanobind::dtype<Scalar>(), int32_t device_type = device::cpu::value, int32_t device_id = 0)
 
       Create an array wrapping an existing memory allocation. The following
       parameters can be specified:
 
-      - `value`: pointer address of the memory region. When the ndarray is
+      - `data`: pointer address of the memory region. When the ndarray is
         parameterized by a constant scalar type to indicate read-only access, a
         const pointer must be passed instead.
 
@@ -490,7 +727,7 @@ section <ndarrays>`.
       - The `device_type` and `device_id` indicate the device and address
         space associated with the pointer `value`.
 
-   .. cpp:function:: ndarray(void * value, const std::initializer_list<size_t> shape, handle owner = nanobind::handle(), std::initializer_list<int64_t> strides = { }, dlpack::dtype dtype = nanobind::dtype<Scalar>(), int32_t device_type = device::cpu::value, int32_t device_id = 0)
+   .. cpp:function:: ndarray(void * data, const std::initializer_list<size_t> shape, handle owner = nanobind::handle(), std::initializer_list<int64_t> strides = { }, dlpack::dtype dtype = nanobind::dtype<Scalar>(), int32_t device_type = device::cpu::value, int32_t device_id = 0)
 
       Alternative form of the above constructor, which accepts the ``shape``
       and ``strides`` arguments using a ``std::initializer_list``. It
@@ -512,13 +749,13 @@ section <ndarrays>`.
    .. cpp:function:: size_t itemsize() const
 
       Return the size of a single array element in bytes. The returned value
-      is rounded to the next full byte in case of bit-level representations
+      is rounded up to the next full byte in case of bit-level representations
       (query :cpp:member:`dtype::bits` for bit-level granularity).
 
    .. cpp:function:: size_t nbytes() const
 
       Return the size of the entire array bytes. The returned value is rounded
-      to the next full byte in case of bit-level representations.
+      up to the next full byte in case of bit-level representations.
 
    .. cpp:function:: size_t shape(size_t i) const
 
@@ -526,7 +763,7 @@ section <ndarrays>`.
 
    .. cpp:function:: int64_t stride(size_t i) const
 
-      Return the stride of dimension `i`.
+      Return the stride (in number of elements) of dimension `i`.
 
    .. cpp:function:: const int64_t* shape_ptr() const
 
@@ -680,19 +917,19 @@ nanobind does not support non-standard types as documented in the section on
 Shape
 +++++
 
-.. cpp:class:: template <size_t... Is> shape
+.. cpp:class:: template <ssize_t... Is> shape
 
    Require the array to have ``sizeof...(Is)`` dimensions. Each entry of `Is`
    specifies a fixed size constraint for that specific dimension. An entry
-   equal to :cpp:var:`any` indicates that any size should be accepted for this
+   equal to ``-1`` indicates that *any* size should be accepted for this
    dimension.
+
+   (An alias named ``nb::any`` representing ``-1`` was removed in nanobind 2).
 
 .. cpp:class:: template <size_t N> ndim
 
    Alternative to the above that only constrains the array dimension.
-   ``nb::ndim<2>`` is equivalent to ``nb::shape<nb::any, nb::any>``.
-
-.. cpp:var:: constexpr size_t any = (size_t) -1
+   ``nb::ndim<2>`` is equivalent to ``nb::shape<-1, -1>``.
 
 Contiguity
 ++++++++++
@@ -768,6 +1005,8 @@ convert into an equivalent representation in one of the following frameworks:
 .. cpp:class:: pytorch
 
 .. cpp:class:: jax
+
+.. cpp:class:: cupy
 
 Eigen convenience type aliases
 ------------------------------
@@ -1190,3 +1429,38 @@ functions:
    .. cpp:function:: const T* get() const
 
       Return a C++ pointer to the referenced object (const version)
+
+Typing
+------
+
+The following functions for typing-related functionality require an additional
+include directive:
+
+.. code-block:: cpp
+
+   #include <nanobind/typing.h>
+
+.. cpp:function:: template <typename... Args> object type_var(Args&&... args)
+
+   Create a `type variable
+   <https://docs.python.org/3/library/typing.html#typing.TypeVar>`__ (i.e., an
+   instance of ``typing.TypeVar``). All arguments of the original Python
+   construction are supported, e.g.:
+
+   .. code-block:: cpp
+
+        m.attr("T") = nb::type_var("T",
+                                   "contravariant"_a = true,
+                                   "covariant"_a = false,
+                                   "bound"_a = nb::type<MyClass>());
+
+
+.. cpp:function:: template <typename... Args> object type_var_tuple(Args&&... args)
+
+   Analogousto :cpp:func:`type_var`, create a `type variable tuple
+   <https://docs.python.org/3/library/typing.html#typing.TypeVarTuple>`__
+   (i.e., an instance of ``typing.TypeVarTuple``).
+
+.. cpp:function:: object any_type()
+
+   Convenience wrapper, which returns ``typing.Any``.

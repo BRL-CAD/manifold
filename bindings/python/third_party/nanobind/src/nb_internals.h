@@ -18,6 +18,10 @@
 #include <functional>
 #include "hash.h"
 
+#if TSL_RH_VERSION_MAJOR != 1 || TSL_RH_VERSION_MINOR < 3
+#  error nanobind depends on tsl::robin_map, in particular version >= 1.3.0, <2.0.0
+#endif
+
 #if defined(_MSC_VER)
 #  define NB_THREAD_LOCAL __declspec(thread)
 #else
@@ -37,6 +41,7 @@ NAMESPACE_BEGIN(detail)
 /// Nanobind function metadata (overloads, etc.)
 struct func_data : func_data_prelim<0> {
     arg_data *args;
+    char *signature;
 };
 
 /// Python object representing an instance of a bound C++ type
@@ -45,6 +50,16 @@ struct nb_inst { // usually: 24 bytes
 
     /// Offset to the actual instance data
     int32_t offset;
+
+    /// State of the C++ object this instance points to: is it constructed?
+    /// can we use it?
+    uint32_t state : 2;
+
+    // Values for `state`. Note that the numeric values of these are relied upon
+    // for an optimization in `nb_type_get()`.
+    static constexpr uint32_t state_uninitialized = 0; // not constructed
+    static constexpr uint32_t state_relinquished = 1; // owned by C++, don't touch
+    static constexpr uint32_t state_ready = 2; // constructed and usable
 
     /**
      * The variable 'offset' can either encode an offset relative to the
@@ -57,22 +72,20 @@ struct nb_inst { // usually: 24 bytes
     /// Is the instance data co-located with the Python object?
     uint32_t internal : 1;
 
-    /// Is the instance properly initialized?
-    uint32_t ready : 1;
-
     /// Should the destructor be called when this instance is GCed?
     uint32_t destruct : 1;
 
     /// Should nanobind call 'operator delete' when this instance is GCed?
     uint32_t cpp_delete : 1;
 
-    /// Does this instance hold reference to others? (via internals.keep_alive)
+    /// Does this instance hold references to others? (via internals.keep_alive)
     uint32_t clear_keep_alive : 1;
 
     /// Does this instance use intrusive reference counting?
     uint32_t intrusive : 1;
 
-    uint32_t unused: 25;
+    // That's a lot of unused space. I wonder if there is a good use for it..
+    uint32_t unused : 24;
 };
 
 static_assert(sizeof(nb_inst) == sizeof(PyObject) + sizeof(uint32_t) * 2);
@@ -81,7 +94,7 @@ static_assert(sizeof(nb_inst) == sizeof(PyObject) + sizeof(uint32_t) * 2);
 struct nb_func {
     PyObject_VAR_HEAD
     PyObject* (*vectorcall)(PyObject *, PyObject * const*, size_t, PyObject *);
-    uint32_t max_nargs_pos;
+    uint32_t max_nargs; // maximum value of func_data::nargs for any overload
     bool complex_call;
 };
 
@@ -276,6 +289,9 @@ extern PyObject *inst_new_int(PyTypeObject *tp);
 extern PyTypeObject *nb_static_property_tp() noexcept;
 extern type_data *nb_type_c2p(nb_internals *internals,
                               const std::type_info *type);
+extern void nb_type_unregister(type_data *t) noexcept;
+
+extern PyObject *call_one_arg(PyObject *fn, PyObject *arg) noexcept;
 
 /// Fetch the nanobind function record from a 'nb_func' instance
 NB_INLINE func_data *nb_func_data(void *o) {
@@ -322,6 +338,9 @@ private:
 };
 
 extern char *strdup_check(const char *);
+extern void *malloc_check(size_t size);
+
+extern char *extract_name(const char *cmd, const char *prefix, const char *s);
 
 NAMESPACE_END(detail)
 NAMESPACE_END(NB_NAMESPACE)

@@ -79,6 +79,8 @@ session:
    cd build
    python3
 
+(The default build output directory is different on Windows: use ``cd build\Debug`` and ``python`` instead of the above.)
+
 You should be able to import the extension and call the newly defined function ``my_ext.add()``.
 
 .. code-block:: pycon
@@ -195,7 +197,7 @@ function arguments:
 Without it, you would have to change every occurrence of the pattern ``"..."_a``
 to the more verbose ``nb::arg("...")``.
 
-The function binding declaration includes several changes. It common to pile
+The function binding declaration includes several changes. It is common to pile
 on a few attributes and modifiers in :cpp:func:`.def(...) <module_::def()>`
 binding declarations, which can be specified in any order.
 
@@ -310,7 +312,7 @@ Let's look at selected lines of this example, starting with the added include di
 
 .. code-block:: cpp
 
-   #include <nanobind/nanobind.h>
+   #include <nanobind/stl/string.h>
 
 nanobind has a minimal core and initially doesn't know how to deal with STL
 types like ``std::string``. This line imports a *type caster* that realizes a

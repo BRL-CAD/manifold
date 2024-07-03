@@ -15,10 +15,6 @@
 NAMESPACE_BEGIN(NB_NAMESPACE)
 NAMESPACE_BEGIN(detail)
 
-template <typename T> struct is_complex;
-template<typename T> struct is_complex<const T> : is_complex<T> {};
-template<typename T> struct is_complex<std::complex<T>> : std::true_type {};
-
 template <typename T> struct type_caster<std::complex<T>> {
     NB_TYPE_CASTER(std::complex<T>, const_name("complex"))
 
@@ -55,7 +51,7 @@ template <typename T> struct type_caster<std::complex<T>> {
             return true;
         }
 
-        return true;
+        return false;
     }
 
     template <typename T2>

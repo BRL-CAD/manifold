@@ -30,7 +30,7 @@ prior instantiation of ``nb::class_<SomeType>``), or an exception will be
 thrown.
 
 The "preview" of the default argument in the function signature is generated
-using the object's ``__repr__`` method. If not available, the signature may not
+using the object's ``__str__`` method. If not available, the signature may not
 be very helpful, e.g.:
 
 .. code-block:: pycon
@@ -42,6 +42,16 @@ be very helpful, e.g.:
     ....
     |  f(...)
     |      f(self, value: my_ext.SomeType = <my_ext.SomeType object at 0x1004d7230>) -> None
+
+
+In such cases, you can either refine the implementation of the type in question
+or manually override how nanobind renders the default value using the
+:cpp:func:`.sig("string") method <arg::sig>`:
+
+.. code-block:: cpp
+
+   nb::class_<MyClass>(m, "MyClass")
+       .def("f", &MyClass::f, "value"_a.sig("SomeType(123)") = SomeType(123));
 
 
 .. _noconvert:
@@ -94,7 +104,7 @@ The same experiment now fails with a ``TypeError``:
    Invoked with types: int
 
 You may, of course, combine this with the ``_a`` shorthand notation (see the
-section on :ref:`keyword arguments <keyword_and_default_args>`) or use specify
+section on :ref:`keyword arguments <keyword_and_default_args>`) or specify
 *unnamed* non-converting arguments using :cpp:func:`nb::arg().noconvert()
 <arg::noconvert>`.
 
@@ -158,10 +168,30 @@ to reflect this fact.
    >>> my_ext.bark.__doc__
    'bark(dog: Optional[my_ext.Dog]) -> str'
 
+You may also specify a ``None`` default argument value, in which case the
+annotation can be omitted:
+
+.. code-block:: cpp
+
+   m.def("bark", &bark, nb::arg("dog") = nb::none());
+
 Note that passing values *by pointer* (including null pointers) is only
 supported for :ref:`bound <bindings>` types. :ref:`Type casters <type_casters>`
 and :ref:`wrappers <wrappers>` cannot be used in such cases and will produce
 compile-time errors.
+
+Alternatively, you can also use ``std::optional<T>`` to pass an optional
+argument *by value*. To use it, you must include the header file associated
+needed by its type caster:
+
+.. code-block:: cpp
+
+   #include <nanobind/stl/optional.h>
+
+   NB_MODULE(my_ext, m) {
+       m.def("bark", [](std::optional<Dog> d) { ... }, nb::arg("dog") = nb::none());
+   }
+
 
 .. _overload_resolution:
 
@@ -225,11 +255,10 @@ The class :cpp:class:`nb::args <args>` derives from :cpp:class:`nb::tuple
 <dict>`.
 
 You may also use them individually or even combine them with ordinary
-arguments. Note, however, that :cpp:class:`nb::args <args>` and
-:cpp:class:`nb::kwargs <kwargs>` must always be the last arguments of the
-function, and in that order if both are specified. This is a restriction
-compared to pybind11, which allowed more general arrangements. nanobind also
-lacks the ``kw_only`` and ``pos_only`` annotations available in pybind11.
+parameters. Note that :cpp:class:`nb::kwargs <kwargs>` must be the last
+parameter if it is specified, and any parameters after
+:cpp:class:`nb::args <args>` are implicitly :ref:`keyword-only <kw_only>`,
+just like in regular Python.
 
 .. _args_kwargs_2:
 
@@ -270,6 +299,66 @@ Here is an example use of the above extension in Python:
    >>> my_ext.my_call(x)
    (1, 'positional')
    {'keyword': 'value'}
+
+
+.. _kw_only:
+
+Keyword-only parameters
+-----------------------
+
+Python supports keyword-only parameters; these can't be filled positionally,
+thus requiring the caller to specify their name. They can be used
+to enforce more clarity at call sites if a function has
+multiple paramaters that could be confused with each other, or to accept
+named options alongside variadic ``*args``.
+
+.. code-block:: python
+
+    def example(val: int, *, check: bool) -> None:
+        # val can be passed either way; check must be given as a keyword arg
+        pass
+
+    example(val=42, check=True)   # good
+    example(check=False, val=5)   # good
+    example(100, check=True)      # good
+    example(200, False)           # TypeError:
+        # example() takes 1 positional argument but 2 were given
+
+    def munge(*args: int, invert: bool = False) -> int:
+        return sum(args) * (-1 if invert else 1)
+
+    munge(1, 2, 3)                # 6
+    munge(4, 5, 6, invert=True)   # -15
+
+nanobind provides a :cpp:struct:`nb::kw_only() <kw_only>` annotation
+that allows you to produce bindings that behave like these
+examples. It must be placed before the :cpp:struct:`nb::arg() <arg>`
+annotation for the first keyword-only parameter; you can think of it
+as equivalent to the bare ``*,`` in a Python function signature. For
+example, the above examples could be written in C++ as:
+
+.. code-block:: cpp
+
+    void example(int val, bool check);
+    int munge(nb::args args, bool invert);
+
+    m.def("example", &example,
+          nb::arg("val"), nb::kw_only(), nb::arg("check"));
+
+    // Parameters after *args are implicitly keyword-only:
+    m.def("munge", &munge,
+          nb::arg("args"), nb::arg("invert"));
+
+    // But you can be explicit about it too, as long as you put the
+    // kw_only annotation in the correct position:
+    m.def("munge", &munge,
+          nb::arg("args"), nb::kw_only(), nb::arg("invert"));
+
+.. note:: nanobind does *not* support the ``pos_only()`` argument annotation
+   provided by pybind11, which marks the parameters before it as positional-only.
+   However, a parameter can be made effectively positional-only by giving it
+   no name (using an empty :cpp:struct:`nb::arg() <arg>` specifier).
+
 
 .. _function_templates:
 
@@ -455,3 +544,4 @@ The following interactive session shows how to call them from Python.
    This functionality is very useful when generating bindings for callbacks in
    C++ libraries (e.g. GUI libraries, asynchronous networking libraries,
    etc.).
+

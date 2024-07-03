@@ -340,8 +340,9 @@ Trying to set any other attribute results in an error:
    >>> p.age = 2  # fail
    AttributeError: 'Pet' object has no attribute 'age'
 
-To enable dynamic attributes for C++ classes, the :class:`nb::dynamic_attr` tag
-must be added to the :class:`nb::class_` constructor:
+To enable dynamic attributes for C++ classes, the :class:`nb::dynamic_attr
+<dynamic_attr>` tag must be added to the :class:`nb::class_ <class_>`
+constructor:
 
 .. code-block:: cpp
 
@@ -364,6 +365,23 @@ possible circular references. Native Python classes incur this same cost by
 default, so this is not anything to worry about. By default, nanobind classes
 are more efficient than native Python classes. Enabling dynamic attributes just
 brings them on par.
+
+.. _weak_refs:
+
+Weak references
+---------------
+
+By default, nanobind instances cannot be referenced via Python's ``weakref``
+class, and attempting to do so will raise an exception.
+
+To support this, add the :class:`nb::is_weak_referenceable
+<is_weak_referenceable>` tag to the :class:`nb::class_ <class_>` constructor.
+Note that this will increase the size of every instance by ``sizeof(void*)``
+due to the need to store a weak reference list.
+
+.. code-block:: cpp
+
+   nb::class_<Pet>(m, "Pet", nb::is_weak_referenceable());
 
 .. _inheriting_in_python:
 
@@ -698,6 +716,17 @@ C++ side, or to perform other types of customization. The
 nanobind that this is an operator, which returns ``NotImplemented`` when
 invoked with incompatible arguments rather than throwing a type error.
 
+When binding *in-place* operators such as ``operator+=``, and when their
+implementation is guaranteed to end with ``return *this``, it is recommended
+that you set a return value policy of :cpp:enumerator:`rv_policy::none`, i.e.,
+
+.. code-block:: cpp
+
+   .def(nb::self += nb::self, nb::rv_policy::none)
+
+Otherwise, the function binding will return a new copy of the object, which is
+usually not desired.
+
 Binding protected member functions
 ----------------------------------
 
@@ -813,7 +842,7 @@ but once again each instantiation must be explicitly specified:
         template <typename V> T fn(V v);
     };
 
-    nb::class<MyClass<int>>(m, "MyClassT")
+    nb::class_<MyClass<int>>(m, "MyClassT")
         .def("fn", &MyClass<int>::fn<std::string>);
 
 .. _tag_based_polymorphism:
@@ -904,6 +933,52 @@ expected:
     >>> my_ext.make_pet(my_ext.PetKind.Dog)
     <my_ext.Dog object at 0x104da6ef0>
 
+Binding unions
+--------------
+
+:cpp:class:`nb::class_\<..\> <class_>` can also be used to provide bindings
+for `unions <https://en.cppreference.com/w/cpp/language/union>`__.
+A basic and useless example:
+
+.. code-block:: cpp
+
+   union Example {
+       int ival;
+       double dval;
+
+       std::string to_string(size_t active_idx) const {
+           return active_idx == 1 ? std::to_string(dval) : std::to_string(ival);
+       }
+   };
+   static_assert(sizeof(Example) == sizeof(double));
+
+   nb::class_<Example>(m, "Example")
+       .def_rw("ival", &Example::ival)
+       .def_rw("dval", &Example::dval)
+       .def("to_string", &Example::to_string);
+
+.. code-block:: pycon
+
+   >>> u = my_ext.Example()
+   >>> u.ival = 42
+   >>> u.to_string(0)
+   '42'
+   >>> u.dval = 1.25
+   >>> u.to_string(1)
+   '1.250000'
+
+Direct binding of union variant members is only safe if all members of the
+union are trivially copyable types (as in this example), but more complex
+unions can also be supported by binding lambdas or member functions that
+enforce the necessary invariants.
+
+This is a low-level feature and should be used with care; even when all
+members are trivially copyable, reading from a union member
+other than the most recently written one produces undefined behavior
+in C++. Unless you need to bind an existing API that uses union types,
+you're probably better off using ``std::variant<..>``, which knows what
+member is active and can thus enforce all the ncessary invariants for you.
+
 Pickling
 --------
 
@@ -937,3 +1012,102 @@ custom ``__init__``-style constructors.
           });
     }
 
+.. _custom_new:
+
+Customizing Python object creation
+----------------------------------
+
+Sometimes you might need to bind a class that can't be constructed in the
+usual way:
+
+.. code-block:: cpp
+
+   class Pet {
+     private:
+       Pet(/* ... */);
+     public:
+       static std::unique_ptr<Pet> make(std::string name, int age);
+       void speak();
+   };
+
+You can use :cpp:func:`.def_static() <class_::def_static>` to
+produce bindings that let you write ``Pet.make("Fido", 2)`` in Python,
+just like you would write ``Pet::make("Fido", 2)`` in C++. But sometimes it's
+nice to provide a more Pythonic interface than that, like ``Pet("Fido", 2)``.
+To do that, nanobind lets you override ``__new__``.
+
+Since this is a rarely-used feature in Python, let's recap. Object
+initialization in Python occurs in two phases:
+
+* the *constructor*, ``__new__``, allocates memory for the object;
+
+* the *initializer*, ``__init__``, sets up the object's initial state.
+
+So far, all the ways we've seen of binding C++ constructors
+(:cpp:struct:`nb::init\<..\>() <init>`, ``.def("__init__", ...)``)
+produce Python object *initializers*. nanobind augments these with its own
+Python object constructor, which allocates a Python object that has
+space in its memory layout for the C++ object to slot in.
+The ``__init__`` method then fills in that space by calling a C++ constructor.
+
+This split between ``__new__`` and ``__init__`` has a lot of benefits,
+including a reduction in unnecessary allocations, but it does mean that
+anything created from Python must be able to control where its
+C++ innards are stored. Sometimes, as with the example of ``Pet`` above,
+that's not feasible. In such cases, you can go down one level and override
+``__new__`` directly:
+
+.. code-block:: cpp
+
+   nb::class_<Pet>(m, "Pet")
+       .def(nb::new_(&Pet::make), "name"_a, "age"_a)
+       .def("speak", &Pet::speak);
+
+Passing :cpp:struct:`nb::new_ <new_>` to :cpp:func:`.def() <class_::def>`
+here creates two magic methods on ``Pet``:
+
+* A ``__new__`` that uses the given function to produce a new ``Pet``.
+  It is converted to a Python object in the same way as the return value
+  of any other function you might write bindings for. In particular,
+  you can pass a :cpp:enum:`nb::rv_policy <rv_policy>` as an additional
+  argument to :cpp:func:`.def() <class_::def>` to control how this conversion
+  occurs.
+
+* A ``__init__`` that takes the same arguments as ``__new__`` but
+  performs no operation.  This is necessary because Python automatically
+  calls ``__init__`` on the object returned by ``__new__`` in most cases.
+
+You can provide a lambda as the argument of :cpp:struct:`nb::new_ <new_>`.
+This is most useful when the lambda returns a pointer or smart pointer;
+if it's returning a value, then ``.def("__init__", ...)`` will have better
+performance. Additionally, you can chain multiple calls to
+``.def(nb::new_(...))`` in order to create an overload set.
+The following example demonstrates both of these capabilities:
+
+.. code-block:: cpp
+
+   nb::class_<Pet>(m, "Pet")
+       .def(nb::new_([]() { return Pet::make(getRandomName(), 0); }))
+       .def(nb::new_(&Pet::make), "name"_a, "age"_a)
+       .def("speak", &Pet::speak);
+
+If you need even more control, perhaps because you need to access the
+type object that Python passes as the first argument of ``__new__``
+(which :cpp:struct:`nb::new_ <new_>` discards), you can write a
+``.def_static("__new__", ...)`` and matching ``.def("__init__", ...)``
+yourself.
+
+.. note::
+
+   Unpickling an object of type ``Foo`` normally requires that
+   ``Foo.__new__(Foo)`` produce something that ``__setstate__`` can be
+   called on. Any custom :cpp:struct:`nb::new_ <new_>` methods will
+   not satisfy this requirement, because they return a
+   fully-constructed object. In order to maintain pickle
+   compatibility, nanobind by default will add an additional
+   ``__new__`` overload that takes no extra arguments and calls the nanobind
+   built-in :cpp:func:`inst_alloc`. This won't make your class constructible
+   with no arguments, because there's no corresponding ``__init__``; it
+   just helps unpickling work. If your first :cpp:struct:`nb::new_ <new_>`
+   method is one that takes no arguments, then nanobind won't add its own,
+   and you'll have to deal with unpickling some other way.

@@ -17,7 +17,7 @@
 
 /// Tracks the ABI of nanobind
 #ifndef NB_INTERNALS_VERSION
-#  define NB_INTERNALS_VERSION 12
+#  define NB_INTERNALS_VERSION 14
 #endif
 
 /// On MSVC, debug and release builds are not ABI-compatible!
@@ -72,15 +72,22 @@
 #  define NB_STABLE_ABI ""
 #endif
 
+#if NB_VERSION_DEV > 0
+  #define NB_VERSION_DEV_STR "_dev" NB_TOSTRING(NB_VERSION_DEV)
+#else
+  #define NB_VERSION_DEV_STR ""
+#endif
+
 #define NB_INTERNALS_ID                                                        \
     "v" NB_TOSTRING(NB_INTERNALS_VERSION)                                      \
-        NB_COMPILER_TYPE NB_STDLIB NB_BUILD_ABI NB_BUILD_TYPE NB_STABLE_ABI
+        NB_COMPILER_TYPE NB_STDLIB NB_VERSION_DEV_STR NB_BUILD_ABI NB_BUILD_TYPE NB_STABLE_ABI
 
 NAMESPACE_BEGIN(NB_NAMESPACE)
 NAMESPACE_BEGIN(detail)
 
 extern PyObject *nb_func_getattro(PyObject *, PyObject *);
 extern PyObject *nb_func_get_doc(PyObject *, void *);
+extern PyObject *nb_func_get_nb_signature(PyObject *, void *);
 extern PyObject *nb_bound_method_getattro(PyObject *, PyObject *);
 extern int nb_func_traverse(PyObject *, visitproc, void *);
 extern int nb_func_clear(PyObject *);
@@ -117,6 +124,7 @@ static PyMemberDef nb_func_members[] = {
 
 static PyGetSetDef nb_func_getset[] = {
     { "__doc__", nb_func_get_doc, nullptr, nullptr, nullptr },
+    { "__nb_signature__", nb_func_get_nb_signature, nullptr, nullptr, nullptr },
     { nullptr, nullptr, nullptr, nullptr, nullptr }
 };
 
@@ -234,27 +242,39 @@ static void internals_cleanup() {
     /* The memory leak checker is unsupported on PyPy, see
        see https://foss.heptapod.net/pypy/pypy/-/issues/3855 */
 
-    bool leak = false;
+    bool leak = false, print_leak_warnings = internals->print_leak_warnings;
 
     if (!internals->inst_c2p.empty()) {
-        if (internals->print_leak_warnings) {
+        if (print_leak_warnings) {
             fprintf(stderr, "nanobind: leaked %zu instances!\n",
                     internals->inst_c2p.size());
+            #if !defined(Py_LIMITED_API)
+                for (auto [k, v]: internals->inst_c2p) {
+                    PyTypeObject *tp = Py_TYPE(v);
+                    fprintf(stderr, " - leaked instance %p of type \"%s\"\n", k, tp->tp_name);
+                }
+            #endif
         }
         leak = true;
     }
 
     if (!internals->keep_alive.empty()) {
-        if (internals->print_leak_warnings) {
+        if (print_leak_warnings) {
             fprintf(stderr, "nanobind: leaked %zu keep_alive records!\n",
                     internals->keep_alive.size());
         }
         leak = true;
     }
 
+    // Only report function/type leaks if actual nanobind instances were leaked
+#if !defined(NB_ABORT_ON_LEAK)
+    if (!leak)
+        print_leak_warnings = false;
+#endif
+
     if (!internals->type_c2p_slow.empty() ||
         !internals->type_c2p_fast.empty()) {
-        if (internals->print_leak_warnings) {
+        if (print_leak_warnings) {
             fprintf(stderr, "nanobind: leaked %zu types!\n",
                     internals->type_c2p_slow.size());
             int ctr = 0;
@@ -270,7 +290,7 @@ static void internals_cleanup() {
     }
 
     if (!internals->funcs.empty()) {
-        if (internals->print_leak_warnings) {
+        if (print_leak_warnings) {
             fprintf(stderr, "nanobind: leaked %zu functions!\n",
                     internals->funcs.size());
             int ctr = 0;
@@ -287,16 +307,22 @@ static void internals_cleanup() {
     }
 
     if (!leak) {
+        nb_translator_seq* t = internals->translators.next;
+        while (t) {
+            nb_translator_seq *next = t->next;
+            delete t;
+            t = next;
+        }
         delete internals;
         internals = nullptr;
         nb_meta_cache = nullptr;
     } else {
-        if (internals->print_leak_warnings) {
+        if (print_leak_warnings) {
             fprintf(stderr, "nanobind: this is likely caused by a reference "
                             "counting issue in the binding code.\n");
         }
 
-        #if NB_ABORT_ON_LEAK == 1
+        #if defined(NB_ABORT_ON_LEAK)
             abort(); // Extra-strict behavior for the CI server
         #endif
     }
@@ -342,6 +368,8 @@ NB_NOINLINE void init(const char *name) {
     p->nb_func = (PyTypeObject *) PyType_FromSpec(&nb_func_spec);
     p->nb_method = (PyTypeObject *) PyType_FromSpec(&nb_method_spec);
     p->nb_bound_method = (PyTypeObject *) PyType_FromSpec(&nb_bound_method_spec);
+    p->keep_alive.min_load_factor(.1f);
+    p->inst_c2p.min_load_factor(.1f);
 
     check(p->nb_module && p->nb_meta && p->nb_type_dict && p->nb_func &&
               p->nb_method && p->nb_bound_method,
@@ -428,9 +456,13 @@ NB_NOINLINE void init(const char *name) {
 
 #if defined(NB_COMPACT_ASSERTIONS)
 NB_NOINLINE void fail_unspecified() noexcept {
-    fail("nanobind: encountered an unrecoverable error condition. Recompile "
-         "using the 'Debug' or 'RelWithDebInfo' modes to obtain further "
-         "information about this problem.");
+    #if defined(NB_COMPACT_ASSERTION_MESSAGE)
+        fail(NB_COMPACT_ASSERTION_MESSAGE);
+    #else
+        fail("nanobind: encountered an unrecoverable error condition. Recompile "
+             "using the 'Debug' or 'RelWithDebInfo' modes to obtain further "
+             "information about this problem.");
+    #endif
 }
 #endif
 

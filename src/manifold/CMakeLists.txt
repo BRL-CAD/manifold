@@ -38,7 +38,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC
     $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/../../meshIO/include>
 	 )
 target_link_libraries(${PROJECT_NAME}
-    PUBLIC utilities cross_section sdf
+    PUBLIC utilities sdf
 	 PRIVATE collider polygon ${MANIFOLD_INCLUDE} ${ASSETIMPORT_LIBRARY}
 )
 

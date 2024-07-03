@@ -84,7 +84,8 @@ directive to pull in the right header file. Complex nested types (e.g.
 vectors of hash tables of strings) work automatically by combining type
 casters recursively.
 
-The following table lists the currently available type casters:
+The following table lists the currently available type casters along with links
+to external projects that provide further casters:
 
 .. list-table::
   :widths: 42 48
@@ -120,6 +121,8 @@ The following table lists the currently available type casters:
     - ``#include <nanobind/stl/string.h>``
   * - ``std::string_view``
     - ``#include <nanobind/stl/string_view.h>``
+  * - ``std::wstring``
+    - ``#include <nanobind/stl/wstring.h>``
   * - ``std::tuple<..>``
     - ``#include <nanobind/stl/tuple.h>``
   * - ``std::shared_ptr<..>``
@@ -140,6 +143,10 @@ The following table lists the currently available type casters:
     - ``#include <nanobind/eigen/dense.h>``
   * - ``Eigen::SparseMatrix<..>``
     - ``#include <nanobind/eigen/sparse.h>``
+  * - Apache Arrow types
+    -  `https://github.com/maximiliank/nanobind_pyarrow <https://github.com/maximiliank/nanobind_pyarrow>`__
+  * - ...
+    - Please reach out if you have additions to this list.
 
 
 **Con**: Every transition between the Python and C++ side will generally require a
@@ -181,8 +188,8 @@ expected:
 
 *How could this happen?*
 The reason is that type casters convert function arguments and return values once, but further
-changes will not automatically propagate to across the language barrier because
-the representations are not intrinsically linked to each other. This problem
+changes will not automatically propagate across the language barrier because
+the representations are not intrinsically linked to each other. This problem is
 not specific to STL types---for example, the following function will similarly
 not update its argument once exposed in Python.
 
@@ -381,12 +388,13 @@ multithreaded computations.
 
 The following wrappers are available and require no additional include
 directives:
+:cpp:class:`any`,
 :cpp:class:`bytes`, :cpp:class:`callable`, :cpp:class:`capsule`,
 :cpp:class:`dict`, :cpp:class:`ellipsis`, :cpp:class:`handle`,
 :cpp:class:`handle_t\<T\> <handle_t>`,
-:cpp:class:`int_`, :cpp:class:`float_`,
-:cpp:class:`iterable`,
-:cpp:class:`iterator`, :cpp:class:`list`, :cpp:class:`mapping`,
+:cpp:class:`bool_`, :cpp:class:`int_`, :cpp:class:`float_`,
+:cpp:class:`iterable`, :cpp:class:`iterator`,
+:cpp:class:`list`, :cpp:class:`mapping`,
 :cpp:class:`module_`, :cpp:class:`object`, :cpp:class:`set`, :cpp:class:`sequence`,
 :cpp:class:`slice`, :cpp:class:`str`, :cpp:class:`tuple`,
 :cpp:class:`weakref`,

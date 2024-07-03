@@ -1,3 +1,4 @@
+#include <nanobind/stl/complex.h>
 #include <nanobind/eigen/dense.h>
 #include <nanobind/eigen/sparse.h>
 #include <nanobind/trampoline.h>
@@ -165,6 +166,7 @@ NB_MODULE(test_eigen_ext, m) {
         assert(!m.isCompressed());
         return m.markAsRValue();
     });
+    m.def("sparse_complex", []() -> Eigen::SparseMatrix<std::complex<double>> { return {}; });
 
     /// issue #166
     using Matrix1d = Eigen::Matrix<double,1,1>;
@@ -220,7 +222,7 @@ NB_MODULE(test_eigen_ext, m) {
     });
 
     struct Base {
-        ~Base() {};
+        virtual ~Base() = default;
         virtual void modRefData(Eigen::Ref<Eigen::VectorXd>) { };
         virtual void modRefDataConst(Eigen::Ref<const Eigen::VectorXd>) { };
     };
@@ -241,12 +243,12 @@ NB_MODULE(test_eigen_ext, m) {
         .def("modRefDataConst", &Base::modRefDataConst);
 
     m.def("modifyRef", [](Base* base) {
-        Eigen::Vector2d input {{1.0}, {2.0}};
+        Eigen::Vector2d input(1.0, 2.0);
         base->modRefData(input);
         return input;
     });
     m.def("modifyRefConst", [](Base* base) {
-        Eigen::Vector2d input {{1.0}, {2.0}};
+        Eigen::Vector2d input(1.0, 2.0);
         base->modRefDataConst(input);
         return input;
     });

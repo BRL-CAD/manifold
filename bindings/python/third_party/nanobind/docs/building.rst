@@ -7,6 +7,8 @@ This section assumes that you have followed the instructions to :ref:`install
 <installing>` nanobind. The easiest way to compile a nanobind-based extension
 involves a CMake-based build system. Other build systems can likely be used as
 well, but they are not officially supported.
+(The first section of the :ref:`CMake API reference <api_cmake>` mentions
+some alternatives.)
 
 Here, we will create a new package from scratch. If you already have an
 existing CMake build system, it should be straightforward to merge some of the
@@ -18,13 +20,22 @@ Preliminaries
 Begin by creating a new file named ``CMakeLists.txt`` in the root directory of
 your project. It should start with the following lines that declare a project
 name and tested CMake version range. The third line line searches for Python >=
-3.8 including the ``Development.Module`` component required by nanobind.
+3.8 including the ``Development.Module`` component required by nanobind. The
+name of this module changed across CMake versions, hence the additional
+conditional check.
 
 .. code-block:: cmake
 
-    project(my_project) # Replace 'my_project' with the name of your project
     cmake_minimum_required(VERSION 3.15...3.27)
-    find_package(Python 3.8 COMPONENTS Interpreter Development.Module REQUIRED)
+    project(my_project) # Replace 'my_project' with the name of your project
+
+    if (CMAKE_VERSION VERSION_LESS 3.18)
+      set(DEV_MODULE Development)
+    else()
+      set(DEV_MODULE Development.Module)
+    endif()
+
+    find_package(Python 3.8 COMPONENTS Interpreter ${DEV_MODULE} REQUIRED)
 
 Add the following lines below. They configure CMake to perform an optimized
 *release* build by default unless another build type is specified. Without this
@@ -76,12 +87,33 @@ source code contained in the file ``my_ext.cpp``.
 
 .. code-block:: cmake
 
-    nanobind_add_module(my_ext my_ext.cpp)
+   nanobind_add_module(my_ext my_ext.cpp)
 
 :cmake:command:`nanobind_add_module` resembles standard CMake commands like
 ``add_executable()`` and ``add_library()``. Any number of source code and
 header files can be declared when the extension is more complex and spread out
 over multiple files.
+
+.. note::
+
+   One opinionated choice of :cmake:command:`nanobind_add_module` is that it
+   optimizes the *size* of the extension by default (i.e., ``-Os`` is passed to
+   the compiler regardless of the project-wide settings). You must specify the
+   ``NOMINSIZE`` parameter to the command to disable this behavior and, e.g.,
+   optimize extension code for speed (i.e., ``-O3``):
+
+   .. code-block:: cmake
+
+      nanobind_add_module(my_ext NOMINSIZE my_ext.cpp)
+
+   The default is chosen this way since extension code usually wraps existing
+   C++ libraries, in which the main computation takes place. Optimizing the
+   bindings for speed does not measurably improve performance, but it does make
+   the bindings *significantly* larger.
+
+   If you observe slowdowns when porting a pybind11 extension, or if your
+   extension performs significant amounts of work within the binding layer,
+   then you may want to experiment with passing the ``NOMINSIZE`` parameter.
 
 The :ref:`next section <basics>` will review the contents of example module
 implementation in ``my_ext.cpp``.

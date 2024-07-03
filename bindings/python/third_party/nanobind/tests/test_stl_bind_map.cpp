@@ -52,12 +52,25 @@ NB_MODULE(test_bind_map_ext, m) {
 
     nb::class_<E_nc>(m, "ENC").def(nb::init<int>()).def_rw("value", &E_nc::value);
 
-    nb::bind_map<std::map<int, E_nc>>(m, "MapENC");
+    // By default, the bindings produce a __getitem__ that makes a copy, which
+    // won't take this non-copyable type: (uncomment to verify build error)
+    //nb::bind_map<std::map<int, E_nc>>(m, "MapENC");
+    //nb::bind_map<std::unordered_map<int, E_nc>>(m, "UmapENC");
+
+    // But we can request reference semantics instead (some care required, read
+    // the documentation):
+    nb::bind_map<std::map<int, E_nc>,
+                 nb::rv_policy::reference_internal>(m, "MapENC");
+    nb::bind_map<std::unordered_map<int, E_nc>,
+                 nb::rv_policy::reference_internal>(m, "UmapENC");
+
     m.def("get_mnc", &times_ten<std::map<int, E_nc>>);
-    nb::bind_map<std::unordered_map<int, E_nc>>(m, "UmapENC");
     m.def("get_umnc", &times_ten<std::unordered_map<int, E_nc>>);
-    // Issue #1885: binding nested std::map<X, Container<E>> with E non-copyable
-    nb::bind_map<std::map<int, std::vector<E_nc>>>(m, "MapVecENC");
+
+    // pybind11 issue #1885: binding nested std::map<X, Container<E>>
+    // with E non-copyable
+    nb::bind_map<std::map<int, std::vector<E_nc>>,
+                 nb::rv_policy::reference_internal>(m, "MapVecENC");
     m.def("get_nvnc", [](int n) {
         auto *m = new std::map<int, std::vector<E_nc>>();
         for (int i = 1; i <= n; i++) {
@@ -68,9 +81,10 @@ NB_MODULE(test_bind_map_ext, m) {
         return m;
     });
 
-    nb::bind_map<std::map<int, std::map<int, E_nc>>>(m, "MapMapENC");
+    nb::bind_map<std::map<int, std::map<int, E_nc>>,
+                 nb::rv_policy::reference_internal>(m, "MapMapENC");
     m.def("get_nmnc", &times_hundred<std::map<int, std::map<int, E_nc>>>);
-    nb::bind_map<std::unordered_map<int, std::unordered_map<int, E_nc>>>(m, "UmapUmapENC");
+    nb::bind_map<std::unordered_map<int, std::unordered_map<int, E_nc>>,
+                 nb::rv_policy::reference_internal>(m, "UmapUmapENC");
     m.def("get_numnc", &times_hundred<std::unordered_map<int, std::unordered_map<int, E_nc>>>);
-
 }

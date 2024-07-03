@@ -34,7 +34,7 @@ Macros
 .. c:macro:: NB_MAKE_OPAQUE(T)
 
    The macro registers a partial template specialization pattern for the type
-   `T` that marks it as *opaque*, mening that nanobind won't try to run its
+   `T` that marks it as *opaque*, meaning that nanobind won't try to run its
    type casting template machinery on it.
 
    This is useful when trying to register a binding for `T` that is simultaneously
@@ -76,7 +76,7 @@ following mixin class that lives in the ``nanobind::detail`` namespace.
 
       Increases the reference count and returns a reference to the Python object.
 
-   .. cpp:function:: handle ref_ref() const
+   .. cpp:function:: handle dec_ref() const
 
       Decreases the reference count and returns a reference to the Python object.
 
@@ -359,7 +359,7 @@ Without reference counting
       Increases the reference count and returns a reference to the Python object.
       Never raises an exception.
 
-   .. cpp:function:: handle ref_ref() const noexcept
+   .. cpp:function:: handle dec_ref() const noexcept
 
       Decreases the reference count and returns a reference to the Python object.
       Never raises an exception.
@@ -720,6 +720,28 @@ Wrapper classes
       Append an element to the list. When `T` does not already represent a
       wrapped Python object, the function performs a cast.
 
+   .. cpp:function:: template <typename T> void insert(Py_ssize_t index, T&& value)
+
+      Insert an element to the list (at index ``index``, which may also be
+      negative). When `T` does not already represent a wrapped Python object,
+      the function performs a cast.
+
+   .. cpp:function:: void clear()
+
+      Clear the list entries.
+
+   .. cpp:function:: void extend(handle h)
+
+      Analogous to the ``.extend(h)`` method of ``list`` in Python.
+
+   .. cpp:function:: void sort()
+
+      Analogous to the ``.sort()`` method of ``list`` in Python.
+
+   .. cpp:function:: void reverse()
+
+      Analogous to the ``.reverse()`` method of ``list`` in Python.
+
    .. cpp:function:: template <typename T, enable_if_t<std::is_arithmetic_v<T>> = 1> detail::accessor<num_item_list> operator[](T key) const
 
       Analogous to ``self[key]`` in Python, where ``key`` is an arithmetic
@@ -788,6 +810,10 @@ Wrapper classes
 
       Clear the contents of the dictionary.
 
+   .. cpp:function:: void update(handle h)
+
+      Analogous to the ``.update(h)`` method of ``dict`` in Python.
+
 .. cpp:class:: set: public object
 
    Wrapper class representing Python ``set`` instances.
@@ -795,6 +821,11 @@ Wrapper classes
    .. cpp:function:: set()
 
       Create an empty set
+
+   .. cpp:function:: set(handle h)
+
+      Attempt to convert a given Python object into a set. Analogous to the
+      expression ``set(h)`` in Python.
 
    .. cpp:function:: size_t size() const
 
@@ -812,7 +843,14 @@ Wrapper classes
 
    .. cpp:function:: void clear()
 
-      Clear the contents of the set
+      Clear the contents of the set.
+
+   .. cpp:function:: template <typename T> bool discard(T&& key)
+
+      Analogous to the ``.discard(h)`` method of the ``set`` type in Python.
+      Returns ``true`` if the item was deleted successfully, and ``false`` if
+      the value was not present. When `T` does not already represent a wrapped
+      Python object, the function performs a cast.
 
 .. cpp:class:: module_: public object
 
@@ -853,6 +891,12 @@ Wrapper classes
          nb::module_ np = nb::module_::import_("numpy");
          nb::object np_array = np.attr("array");
 
+   .. cpp:function:: module_ import_(handle name)
+
+      Import the Python module with the specified name and return a reference
+      to it. In contrast to the version above, this function expects a Python
+      object as key.
+
    .. cpp:function:: module_ def_submodule(const char * name, const char * doc = nullptr)
 
       Create a Python submodule within an existing module and return a
@@ -890,6 +934,24 @@ Wrapper classes
    .. cpp:function:: void * data() const
 
       Return the pointer wrapped by the capsule.
+
+
+.. cpp:class:: bool_: public object
+
+   This wrapper class represents Python ``bool`` instances.
+
+   .. cpp:function:: int_(handle h)
+
+      Performs a boolean cast within Python. This is equivalent to the Python
+      expression ``bool(h)``.
+
+   .. cpp:function:: explicit bool_(bool value)
+
+      Convert an C++ boolean instance into a Python ``bool``.
+
+   .. cpp:function:: explicit operator bool() const
+
+      Extract the boolean value underlying this object.
 
 
 .. cpp:class:: int_: public object
@@ -973,9 +1035,9 @@ Wrapper classes
 
       Convert a null-terminated C-style string encoding into a Python ``bytes`` object.
 
-   .. cpp:function:: bytes(const char * s, size_t n)
+   .. cpp:function:: bytes(const void * buf, size_t n)
 
-      Convert a null-terminated C-style string encoding of length ``n`` bytes into a Python ``bytes`` object.
+      Convert a byte buffer ``buf`` of length ``n`` bytes into a Python ``bytes`` object.  The buffer can contain embedded null bytes.
 
    .. cpp:function:: const char * c_str() const
 
@@ -984,6 +1046,11 @@ Wrapper classes
    .. cpp:function:: size_t size() const
 
       Return the size in bytes.
+
+   .. cpp:function:: const void * data() const
+
+      Convert a Python ``bytes`` object into a byte buffer of length :cpp:func:`bytes::size()` bytes.
+
 
 .. cpp:class:: type_object: public object
 
@@ -1115,6 +1182,13 @@ Wrapper classes
 .. cpp:class:: kwargs : public dict
 
    Variable keyword argument keyword list for use in function argument declarations.
+
+.. cpp:class:: any : public object
+
+   This wrapper class represents Python ``typing.Any``-typed values. On the C++
+   end, this type is interchangeable with :py:class:`object`. The only
+   difference is the type signature when used in function arguments and return
+   values.
 
 Parameterized wrapper classes
 -----------------------------
@@ -1257,12 +1331,12 @@ the reference section on :ref:`class binding <class_binding>`.
    overlapping or identical input types (e.g. :cpp:class:`object`) and must run
    code at runtime to select the right overload.
 
-   You should probably write a thorough docstring explicing the expected inputs
-   in this case, since the behavior won't be obvious from the auto-generated
-   function signature list in the docstring. It can be frustrating when a
-   function call fails with an error message stating that the provided
-   arguments aren't compatible with any overload, when the associated error
-   message suggests otherwise.
+   You should probably write a thorough docstring that explicitly mentions the
+   expected inputs in this case, since the behavior won't be obvious from the
+   auto-generated function signature. It can be frustrating when a function
+   call fails with an error message stating that the provided arguments aren't
+   compatible with any overload, when the associated error message suggests
+   otherwise.
 
    .. cpp:function:: next_overload()
 
@@ -1460,13 +1534,17 @@ parameter of :cpp:func:`module_::def`, :cpp:func:`class_::def`,
 
    .. cpp:function:: name(const char * value)
 
-      Captures the name of the function.
+      Specify this annotation to override the name of the function.
+
+      nanobind will internally copy the string when creating a function
+      binding, hence dynamically generated arguments with a limited lifetime
+      are legal.
 
 .. cpp:struct:: arg
 
    Function argument annotation to enable keyword-based calling, default
    arguments, passing ``None``, and implicit conversion hints. Note that when a
-   function argument should be annotated, you *must* specify annotations for
+   function argument should be annotated, you *must* specify annotations for all
    arguments of that function.
 
    Example use:
@@ -1507,6 +1585,13 @@ parameter of :cpp:func:`module_::def`, :cpp:func:`class_::def`,
 
       Set a flag noting that implicit conversion should never be performed for
       this function argument.
+
+   .. cpp:function:: arg &sig(const char * sig)
+
+      Override the signature of the default argument value. This is useful when
+      the argument value is unusually complex so that the default method to
+      explain it in docstrings and stubs (``str(value)``) does not produce
+      acceptable output.
 
 .. cpp:struct:: is_method
 
@@ -1556,8 +1641,8 @@ parameter of :cpp:func:`module_::def`, :cpp:func:`class_::def`,
    noteworthy:
 
    - It *usually* doesn't make sense to specify a ``Nurse`` or ``Patient`` for an
-     argument or return value handled by a :ref:`type caster <type_caster>` (e.g.,
-     a STL vector handled via the include directive ``#include
+     argument or return value handled by a :ref:`type caster <type_casters>`
+     (e.g., a STL vector handled via the include directive ``#include
      <nanobind/stl/vector.h>``). That's because type casters copy-convert the
      Python object into an equivalent C++ object, whose lifetime is decoupled
      from the original Python object. However, the :cpp:class:`keep_alive
@@ -1570,11 +1655,65 @@ parameter of :cpp:func:`module_::def`, :cpp:func:`class_::def`,
      The ``Nurse`` and ``Patient`` annotation always refer to the *final* object
      following implicit conversion.
 
-.. cpp:struct:: raw_doc
+.. cpp:struct:: sig
 
-   .. cpp:function:: raw_doc(const char * value)
+   .. cpp:function:: sig(const char * value)
 
-      Take complete control over the docstring of a bound function and replace it with `value`.
+      This is *both* a class and a function binding annotation.
+
+      1. When used in functions bindings, it provides complete control over
+         the function's type signature by replacing the automatically generated
+         version with ``value``. You can use it to add or change arguments and
+         return values, tweak how default values are rendered, and add custom
+         decorators.
+
+         Here is an example:
+
+         .. code-block:: cpp
+
+            nb::def("function_name", &function_name,
+                    nb::sig(
+                        "@decorator(decorator_args..)\n
+                        "def function_name(arg_1: type_1 = def_1, ...) -> ret"
+                    ));
+
+
+      2. When used in class bindings, the annotation enables complete control
+         over how the class is rendered by nanobind's ``stubgen`` program. You
+         can use it add decorators, specify ``typing.TypeVar``-parameterized
+         base classes, metaclasses, etc.
+
+         Here is an example:
+
+         .. code-block:: cpp
+
+            nb::class_<Class>(m, "Class",
+                              nb::sig(
+                                  "@decorator(decorator_args..)\n"
+                                  "class Class(Base1[T], Base2, meta=Meta)"
+                              ));
+
+      Deviating significantly from the nanobind-generated signature likely
+      means that the class or function declaration is a *lie*, but such lies
+      can be useful to type-check complex binding projects.
+
+      Specifying decorators isn't required---the above are just examples to
+      show that this is possible.
+
+      nanobind will internally copy the signature during function/type
+      creation, hence dynamically generated strings with a limited lifetime are
+      legal.
+
+      The provided string should be valid Python signature, but *without* a
+      trailing colon (``":"``) or trailing newline. Furthermore, nanobind
+      analyzes the string and expects to find the name of the function or class
+      on the *last line* between the ``"def"`` / ``"class"`` prefix and the
+      opening parenthesis.
+
+      For function bindings, this name must match the specified function name
+      in ``.def("name", ..)``-style binding declarations, and for class
+      bindings, the specified name must match the ``name`` argument of
+      :cpp:class:`nb::class_ <class_>`.
 
 .. cpp:enum-class:: rv_policy
 
@@ -1650,6 +1789,50 @@ parameter of :cpp:func:`module_::def`, :cpp:func:`class_::def`,
       This policy matches `automatic` but falls back to `reference` when the
       return value is a pointer.
 
+.. cpp:struct:: kw_only
+
+   Indicate that all following function parameters are keyword-only. This
+   may only be used if you supply an :cpp:struct:`arg` annotation for each
+   parameters, because keyword-only parameters are useless if they don't have
+   names. For example, if you write
+
+   .. code-block:: cpp
+
+      int some_func(int one, const char* two);
+
+      m.def("some_func", &some_func,
+            nb::arg("one"), nb::kw_only(), nb::arg("two"));
+
+   then in Python you can write ``some_func(42, two="hi")``, or
+   ``some_func(one=42, two="hi")``, but not ``some_func(42, "hi")``.
+
+   Just like in Python, any parameters appearing after variadic
+   :cpp:class:`*args <args>` are implicitly keyword-only. You don't
+   need to include the :cpp:struct:`kw_only` annotation in this case,
+   but if you do include it, it must be in the correct position:
+   immediately after the :cpp:struct:`arg` annotation for the variadic
+   :cpp:class:`*args <args>` parameter.
+
+.. cpp:struct:: template <typename T> for_getter
+
+   When defining a property with a getter and a setter, you can use this to
+   only pass a function binding attribute to the getter part. An example is
+   shown below.
+
+   .. code-block:: cpp
+
+      nb::class_<MyClass>(m, "MyClass")
+        .def_prop_rw("value", &MyClass::value,
+                nb::for_getter(nb::sig("def value(self, /) -> int")),
+                nb::for_setter(nb::sig("def value(self, value: int, /) -> None")),
+                nb::for_getter("docstring for getter"),
+                nb::for_setter("docstring for setter"));
+
+.. cpp:struct:: template <typename T> for_setter
+
+
+   Analogous to :cpp:struct:`for_getter`, but for setters.
+
 
 .. _class_binding_annotations:
 
@@ -1659,6 +1842,10 @@ Class binding annotations
 The following annotations can be specified using the variable-length ``Extra``
 parameter of the constructor :cpp:func:`class_::class_`.
 
+Besides the below options, also refer to the :cpp:class:`sig` which is
+usable in both function and class bindings. It can be used to override class
+declarations in generated :ref:`stubs <stubs>`,
+
 .. cpp:struct:: is_final
 
    Indicate that a type cannot be subclassed.
@@ -1666,6 +1853,29 @@ parameter of the constructor :cpp:func:`class_::class_`.
 .. cpp:struct:: dynamic_attr
 
    Indicate that instances of a type require a Python dictionary to support the dynamic addition of attributes.
+
+.. cpp:struct:: is_weak_referenceable
+
+   Indicate that instances of a type require a weak reference list so that they
+   can be referenced by the Python ``weakref.*`` types.
+
+.. cpp:struct:: is_generic
+
+   If present, nanobind will add a ``__class_getitem__`` function to the newly
+   created type that permits constructing *parameterized* versions (e.g.,
+   ``MyType[int]``). The implementation of this function is equivalent to
+
+   .. code-block:: python
+
+      def __class_getitem__(cls, value):
+          import types
+          return types.GenericAlias(cls, value)
+
+   See the section on :ref:`creating generic types <typing_generics_creating>`
+   for an example.
+
+   This feature is only supported on Python 3.9+. Nanobind will ignore
+   the attribute in Python 3.8 builds.
 
 .. cpp:struct:: template <typename T> supplement
 
@@ -1683,24 +1893,6 @@ parameter of the constructor :cpp:func:`class_::class_`.
    used to accomplish this. The provided list should be followed by a
    zero-initialized ``PyType_Slot`` element. See :ref:`Customizing type creation
    <typeslots>` for more information about this feature.
-
-.. cpp:struct:: type_slots_callback
-
-   .. cpp:function:: type_slots_callback(void (*callback)(detail::type_init_data *, PyType_Slot *&slots, size_t max_slots) noexcept)
-
-   This is an alternative to `type_slots` that provides a callback
-   which will be invoked during type creation to populate the type's
-   list of slots. It is used by `enum_`. It can be used in addition to
-   the `type_slots` annotation; if both are provided,
-   `type_slots_callback` runs first (so `type_slots` can override its choices).
-
-   The callback should execute ``*slots++ = {Py_tp_foo, (void *) handle_foo};``
-   at most *max_slots* times.
-
-   Information about the type under construction is available via the first
-   parameter received by the callback, but be aware that this is an internal
-   type which is not subject to nanobind's usual semantic versioning guarantees.
-   See ``include/nanobind/nb_class.h`` for more details.
 
 .. cpp:struct:: template <typename T> intrusive_ptr
 
@@ -1722,9 +1914,6 @@ Enum binding annotations
 
 The following annotations can be specified using the variable-length
 ``Extra`` parameter of the constructor :cpp:func:`enum_::enum_`.
-Enums also support the :cpp:struct:`dynamic_attr` and
-:cpp:struct:`type_slots` annotations
-documented for :ref:`classes <class_binding_annotations>`.
 
 .. cpp:struct:: is_arithmetic
 
@@ -1764,7 +1953,7 @@ Class binding
    classes <trampolines>`.
 
    When the type ``T`` was previously already registered (either within the
-   same extension or another extension), the the ``class_<..>`` declaration is
+   same extension or another extension), the ``class_<..>`` declaration is
    redundant. nanobind will print a warning message in this case:
 
    .. code-block:: text
@@ -1801,13 +1990,13 @@ Class binding
              .def(nb::init<>()) // Bind the default constructor
              .def("f", &A::f);  // Bind the method A::f
 
-   .. cpp:function:: template <typename... Args, typename... Extra> class_ &def(init<Args...> init, const Extra &... extra)
+   .. cpp:function:: template <typename... Args, typename... Extra> class_ &def(init<Args...> arg, const Extra &... extra)
 
       Bind a constructor. The variable length `extra` parameter can be used to
       pass a docstring and other :ref:`function binding annotations
       <function_binding_annotations>`.
 
-   .. cpp:function:: template <typename Arg, typename... Extra> class_ &def(init_implicit<Arg> init, const Extra &... extra)
+   .. cpp:function:: template <typename Arg, typename... Extra> class_ &def(init_implicit<Arg> arg, const Extra &... extra)
 
       Bind a constructor that may be used for implicit type conversions. The
       constructor must take a single argument of an unspecified type `Arg`.
@@ -1821,6 +2010,13 @@ Class binding
 
       This constructor generates more compact code than a separate call to
       :cpp:func:`implicitly_convertible`, but is otherwise equivalent.
+
+   .. cpp:function:: template <typename Func, typename... Extra> class_ &def(new_<Func> arg, const Extra &... extra)
+
+      Bind a C++ factory function as a Python object constructor (``__new__``).
+      This is an advanced feature; prefer :cpp:struct:`nb::init\<..\> <init>`
+      where possible. See the discussion of :ref:`customizing object creation
+      <custom_new>` for more details.
 
    .. cpp:function:: template <typename C, typename D, typename... Extra> class_ &def_rw(const char * name, D C::* p, const Extra &...extra)
 
@@ -1836,7 +2032,10 @@ Class binding
       The variable length `extra` parameter can be used to pass a docstring and
       other :ref:`function binding annotations <function_binding_annotations>`
       that are forwarded to the anonymous functions used to construct the
-      property
+      property.
+      Use the :cpp:struct:`nb::for_getter <for_getter>` and
+      :cpp:struct:`nb::for_setter <for_setter>` to pass annotations
+      specifically to the setter or getter part.
 
       **Example**:
 
@@ -1881,6 +2080,9 @@ Class binding
 
       The variable length `extra` parameter can be used to pass a docstring and
       other :ref:`function binding annotations <function_binding_annotations>`.
+      Use the :cpp:struct:`nb::for_getter <for_getter>` and
+      :cpp:struct:`nb::for_setter <for_setter>` to pass annotations
+      specifically to the setter or getter part.
 
       Note that this function implicitly assigns the
       :cpp:enumerator:`rv_policy::reference_internal` return value policy to
@@ -1973,6 +2175,9 @@ Class binding
       other :ref:`function binding annotations <function_binding_annotations>`
       that are forwarded to the anonymous functions used to construct the
       property
+      Use the :cpp:struct:`nb::for_getter <for_getter>` and
+      :cpp:struct:`nb::for_setter <for_setter>` to pass annotations
+      specifically to the setter or getter part.
 
       **Example**:
 
@@ -2019,6 +2224,9 @@ Class binding
 
       The variable length `extra` parameter can be used to pass a docstring and
       other :ref:`function binding annotations <function_binding_annotations>`.
+      Use the :cpp:struct:`nb::for_getter <for_getter>` and
+      :cpp:struct:`nb::for_setter <for_setter>` to pass annotations
+      specifically to the setter or getter part.
 
       Note that this function implicitly assigns the
       :cpp:enumerator:`rv_policy::reference` return value policy to
@@ -2078,7 +2286,7 @@ Class binding
    .. cpp:function:: template <detail::op_id id, detail::op_type ot, typename L, typename R, typename... Extra> class_ &def(const detail::op_<id, ot, L, R> &op, const Extra&... extra)
 
       This interface provides convenient syntax sugar to replace relatively
-      length method bindings with shorter operator bindings. To use it, you
+      lengthy method bindings with shorter operator bindings. To use it, you
       will need an extra include directive:
 
       .. code-block:: cpp
@@ -2124,7 +2332,7 @@ Class binding
       Bind the enumeration of type `T` to the identifier `name` within the
       scope `scope`. The variable length `extra` parameter can be used to pass
       a docstring and other :ref:`enum binding annotations
-      <enum_binding_annotations>` such as :cpp:class:`is_arithmetic`.
+      <enum_binding_annotations>` (currently, only :cpp:class:`is_arithmetic` is supported).
 
    .. cpp:function:: enum_ &value(const char * name, T value, const char * doc = nullptr)
 
@@ -2183,7 +2391,7 @@ Class binding
 
 .. cpp:struct:: template <typename Arg> init_implicit
 
-   See :cpp:class:`init` for detail on binding constructorts. The main
+   See :cpp:class:`init` for detail on binding constructors. The main
    difference between :cpp:class:`init`  and `init_implicit` is that the latter
    only supports constructors taking a single argument `Arg`, and that it marks
    the constructor as usable for implicit conversions from `Arg`.
@@ -2195,7 +2403,7 @@ Class binding
    .. code-block:: cpp
 
       nb::class_<MyType>(m, "MyType")
-          .def(nb::init_implicit<const char*, int>());
+          .def(nb::init_implicit<const char*>());
 
    can be replaced by the lower-level code
 
@@ -2208,6 +2416,44 @@ Class binding
                 });
 
        nb::implicitly_convertible<const char*, MyType>();
+
+.. cpp:struct:: template <typename Func> new_
+
+   This is a small helper class that indicates to :cpp:func:`class_::def()`
+   that a particular lambda or static method provides a Python object
+   constructor (``__new__``) for the class being bound. Normally, you would
+   use :cpp:class:`init` instead if possible, in order to cooperate with
+   nanobind's usual object creation process. Using :cpp:class:`new_`
+   replaces that process entirely. This is principally useful when some
+   C++ type of interest can only provide pointers to its instances,
+   rather than allowing them to be constructed directly.
+
+   Like :cpp:class:`init`, the only use of a :cpp:class:`new_` object is
+   as an argument to :cpp:func:`class_::def()`.
+
+   Example use:
+
+   .. code-block:: cpp
+
+      class MyType {
+      private:
+          MyType();
+      public:
+          static std::shared_ptr<MyType> create();
+          int value = 0;
+      };
+
+      nb::class_<MyType>(m, "MyType")
+          .def(nb::new_(&MyType::create));
+
+   Given this example code, writing ``MyType()`` in Python would
+   produce a Python object wrapping the result of ``MyType::create()``
+   in C++. If multiple calls to ``create()`` return pointers to the
+   same C++ object, these will turn into references to the same Python
+   object as well.
+
+   See the discussion of :ref:`customizing Python object creation <custom_new>`
+   for more information.
 
 
 GIL Management
@@ -2251,7 +2497,7 @@ Low-level type and instance access
 
 nanobind exposes a low-level interface to provide fine-grained control over
 the sequence of steps that instantiates a Python object wrapping a C++
-instance. An thorough explanation of these features is provided in a
+instance. A thorough explanation of these features is provided in a
 :ref:`separate section <lowlevel>`.
 
 Type objects
@@ -2407,17 +2653,13 @@ The documentation below refers to two per-instance flags with the following mean
    :cpp:func:`inst_set_state` to disable the flag following the call to
    :cpp:func:`inst_copy`.
 
+   *New in nanobind v2.0.0*: The function is a no-op when ``src`` and ``dst``
+   refer to the same object.
+
 .. cpp:function:: void inst_move(handle dst, handle src)
 
-   Move-construct the contents of `src` into `dst` and set the *ready* and
-   *destruct* flags of `dst` to ``true``.
-
-   `dst` should be an uninitialized instance of the same type. Note that
-   setting the *destruct* flag may be problematic if `dst` is an offset into an
-   existing object created using :cpp:func:`inst_reference` (the destructor
-   will be called multiple times in this case). If so, you must use
-   :cpp:func:`inst_set_state` to disable the flag following the call to
-   :cpp:func:`inst_move`.
+   Analogous to :cpp:func:`inst_copy`, except that the move constructor
+   is used instead of the copy constructor.
 
 .. cpp:function:: void inst_replace_copy(handle dst, handle src)
 
@@ -2431,10 +2673,13 @@ The documentation below refers to two per-instance flags with the following mean
    :cpp:func:`inst_alloc`, :cpp:func:`inst_reference`, or
    :cpp:func:`inst_take_ownership`.
 
+   *New in nanobind v2.0.0*: The function is a no-op when ``src`` and ``dst``
+   refer to the same object.
+
 .. cpp:function:: void inst_replace_move(handle dst, handle src)
 
-   Analogous to :cpp:func:`inst_replace_copy`, except that a move constructor
-   is used here.
+   Analogous to :cpp:func:`inst_replace_copy`, except that the move constructor
+   is used instead of the copy constructor.
 
 .. cpp:function:: str inst_name(handle h)
 
@@ -2499,6 +2744,12 @@ Miscellaneous
 
    Return the ``globals()`` dictionary.
 
+.. cpp:function:: Py_hash_t hash(handle h)
+
+   Hash the given argument like ``hash()`` in pure Python. The type of the
+   return value (``Py_hash_t``) is an implementation-specific signed integer
+   type.
+
 .. cpp:function:: template <typename Source, typename Target> void implicitly_convertible()
 
    Indicate that the type `Source` is implicitly convertible into `Target`
@@ -2520,21 +2771,18 @@ Miscellaneous
       nb::class_<Target>(m, "Target")
           .def(nb::init<Source>());
 
-      nb::implicitly_convertible<Target, Source>();
+      nb::implicitly_convertible<Source, Target>();
 
    The function is provided for reasons of compatibility with pybind11, and as
    an escape hatch to enable use cases where :cpp:struct:`init_implicit`
    is not available (e.g., for custom binding-specific constructors that don't
    exist in `Target` type).
 
-.. cpp:struct:: template <typename T, typename D> typed
+.. cpp:class:: template <typename T, typename... Ts> typed
 
-    This helper class provides an an API for overriding the type
-    annotation of a function argument or return value in generated
-    docstrings. It is particularly helpful when the type signature is
-    not obvious and must be computed at compile time.  Otherwise, the
-    :cpp:class:`raw_doc` attribute provides a simpler alternative for
-    taking full control of docstrings and type annotations.
+    This helper class provides an interface to parameterize generic types to
+    improve generated Python function signatures (e.g., to turn ``list`` into
+    ``list[MyType]``).
 
     Consider the following binding that iterates over a Python list.
 
@@ -2546,36 +2794,16 @@ Miscellaneous
            }
        });
 
-    Suppose that ``f`` expects a list of ``Foo`` objects, which is not clear
-    from the signature. To improve the function signature, use the
-    ``nb::typed<T, D>`` wrapper class to pass the argument.
-
-    The template argument `T` should be set to the original argument type, and
-    `D` points to a helper class that will be used to compute the type name at
-    compile time. Any access to the list ``l`` must be replaced by ``l.value``:
+    Suppose that ``f`` expects a list of ``MyType`` objects, which is not clear
+    from the signature. To make this explicit, use the ``nb::typed<T, Ts...>``
+    wrapper to pass additional type parameters. This has no effect besides
+    clarifying the signature---in particular, nanobind does *not* insert
+    additional runtime checks!
 
     .. code-block:: cpp
 
-       m.def("f", [](nb::typed<nb::list, FooListName> l) {
-           for (nb::handle h : l.value) {
+       m.def("f", [](nb::typed<nb::list, MyType> l) {
+           for (nb::handle h : l) {
                // ...
            }
        });
-
-    In this simple example, the ``FooListName`` type can be defined as follows:
-
-    .. code-block:: cpp
-
-       struct FooListName {
-           static constexpr auto Name =
-               nb::detail::const_name("list[") +
-               nb::detail::const_name<Foo>() +
-               nb::detail::const_name("]");
-       };
-
-    More generally, `D` can be a templated class with partial overloads,
-    which allows for advanced constructions.
-
-    .. cpp:member:: T value
-
-       Wrapped value of the `typed` parameter.

@@ -1,7 +1,7 @@
 #include <nanobind/nanobind.h>
 #include <nanobind/ndarray.h>
-#include <nanobind/stl/complex.h>
 #include <algorithm>
+#include <complex>
 #include <vector>
 
 namespace nb = nanobind;
@@ -21,10 +21,14 @@ namespace nanobind {
        static constexpr bool is_int     = false;
        static constexpr bool is_signed  = true;
    };
-};
+}
 #endif
 
 NB_MODULE(test_ndarray_ext, m) {
+    m.def("get_is_valid", [](const nb::ndarray<nb::ro> &t) {
+        return t.is_valid();
+    }, "array"_a.noconvert().none());
+
     m.def("get_shape", [](const nb::ndarray<nb::ro> &t) {
         nb::list l;
         for (size_t i = 0; i < t.ndim(); ++i)
@@ -34,15 +38,19 @@ NB_MODULE(test_ndarray_ext, m) {
 
     m.def("get_size", [](const nb::ndarray<> &t) {
         return t.size();
-    }, "array"_a.noconvert());
+    }, "array"_a.noconvert().none());
 
     m.def("get_itemsize", [](const nb::ndarray<> &t) {
         return t.itemsize();
-    }, "array"_a.noconvert());
+    }, "array"_a.noconvert().none());
 
     m.def("get_nbytes", [](const nb::ndarray<> &t) {
         return t.nbytes();
-    }, "array"_a.noconvert());
+    }, "array"_a.noconvert().none());
+
+    m.def("get_stride", [](const nb::ndarray<> &t, size_t i) {
+        return t.stride(i);
+    }, "array"_a.noconvert(), "i"_a);
 
     m.def("check_shape_ptr", [](const nb::ndarray<> &t) {
         std::vector<int64_t> shape(t.ndim());
@@ -76,11 +84,11 @@ NB_MODULE(test_ndarray_ext, m) {
     m.def("pass_uint32", [](const nb::ndarray<uint32_t> &) { }, "array"_a.noconvert());
     m.def("pass_bool", [](const nb::ndarray<bool> &) { }, "array"_a.noconvert());
     m.def("pass_float32_shaped",
-          [](const nb::ndarray<float, nb::shape<3, nb::any, 4>> &) {}, "array"_a.noconvert());
+          [](const nb::ndarray<float, nb::shape<3, -1, 4>> &) {}, "array"_a.noconvert());
 
     m.def("pass_float32_shaped_ordered",
           [](const nb::ndarray<float, nb::c_contig,
-                               nb::shape<nb::any, nb::any, 4>> &) {}, "array"_a.noconvert());
+                               nb::shape<-1, -1, 4>> &) {}, "array"_a.noconvert());
 
     m.def("check_order", [](nb::ndarray<nb::c_contig>) -> char { return 'C'; });
     m.def("check_order", [](nb::ndarray<nb::f_contig>) -> char { return 'F'; });
@@ -98,7 +106,7 @@ NB_MODULE(test_ndarray_ext, m) {
           });
 
     m.def("initialize",
-          [](nb::ndarray<float, nb::shape<10, nb::any>, nb::device::cpu> &t) {
+          [](nb::ndarray<float, nb::shape<10, -1>, nb::device::cpu> &t) {
               int k = 0;
               for (size_t i = 0; i < 10; ++i)
                   for (size_t j = 0; j < t.shape(1); ++j)
@@ -132,7 +140,7 @@ NB_MODULE(test_ndarray_ext, m) {
         );
     });
 
-    m.def("process", [](nb::ndarray<uint8_t, nb::shape<nb::any, nb::any, 3>,
+    m.def("process", [](nb::ndarray<uint8_t, nb::shape<-1, -1, 3>,
                                    nb::c_contig, nb::device::cpu> ndarray) {
         // Double brightness of the MxNx3 RGB image
         for (size_t y = 0; y < ndarray.shape(0); ++y)
@@ -158,6 +166,9 @@ NB_MODULE(test_ndarray_ext, m) {
     m.def("passthrough", [](nb::ndarray<> a) { return a; }, nb::rv_policy::none);
     m.def("passthrough_copy", [](nb::ndarray<> a) { return a; }, nb::rv_policy::copy);
 
+    m.def("passthrough_arg_none", [](nb::ndarray<> a) { return a; },
+          nb::arg().none(), nb::rv_policy::none);
+
     m.def("ret_numpy", []() {
         float *f = new float[8] { 1, 2, 3, 4, 5, 6, 7, 8 };
         size_t shape[2] = { 2, 4 };
@@ -173,11 +184,11 @@ NB_MODULE(test_ndarray_ext, m) {
 
     m.def("ret_numpy_const_ref", []() {
         size_t shape[2] = { 2, 4 };
-        return nb::ndarray<nb::numpy, const float, nb::shape<2, 4>>(f_global, 2, shape);
+        return nb::ndarray<nb::numpy, const float, nb::shape<2, 4>>(f_global, 2, shape, nb::handle());
     }, nb::rv_policy::reference);
 
     m.def("ret_numpy_const", []() {
-        return nb::ndarray<nb::numpy, const float, nb::shape<2, 4>>(f_global, { 2, 4 });
+        return nb::ndarray<nb::numpy, const float, nb::shape<2, 4>>(f_global, { 2, 4 }, nb::handle());
     });
 
     m.def("ret_pytorch", []() {
@@ -218,7 +229,7 @@ NB_MODULE(test_ndarray_ext, m) {
 
 
     struct Cls {
-        auto f1() { return nb::ndarray<nb::numpy, float>(data, { 10 }); }
+        auto f1() { return nb::ndarray<nb::numpy, float>(data, { 10 }, nb::handle()); }
         auto f2() { return nb::ndarray<nb::numpy, float>(data, { 10 }, nb::cast(this, nb::rv_policy::none)); }
         auto f3(nb::handle owner) { return nb::ndarray<nb::numpy, float>(data, { 10 }, owner); }
 
@@ -292,8 +303,17 @@ NB_MODULE(test_ndarray_ext, m) {
     m.def("cast", [](bool b) -> nb::ndarray<nb::numpy> {
         using Ret = nb::ndarray<nb::numpy>;
         if (b)
-            return Ret(nb::ndarray<nb::numpy, float, nb::shape<>>(f_global, 0, nullptr));
+            return Ret(nb::ndarray<nb::numpy, float, nb::shape<>>(f_global, 0, nullptr, nb::handle()));
         else
-            return Ret(nb::ndarray<nb::numpy, int, nb::shape<>>(i_global, 0, nullptr));
+            return Ret(nb::ndarray<nb::numpy, int, nb::shape<>>(i_global, 0, nullptr, nb::handle()));
     });
+
+    // issue #365
+    m.def("set_item", [](nb::ndarray<double, nb::ndim<1>, nb::c_contig> data, uint32_t) {
+        data(0) = 123;
+    });
+    m.def("set_item",
+          [](nb::ndarray<std::complex<double>, nb::ndim<1>, nb::c_contig> data, uint32_t) {
+            data(0) = 123;
+          });
 }

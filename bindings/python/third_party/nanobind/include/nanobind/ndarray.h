@@ -65,15 +65,11 @@ struct dltensor {
 
 NAMESPACE_END(dlpack)
 
-NAMESPACE_BEGIN(detail)
-
-template <typename T> struct is_complex : std::false_type { };
-
-NAMESPACE_END(detail)
-
-constexpr size_t any = (size_t) -1;
-
-template <size_t... Is> struct shape {
+template <ssize_t... Is> struct shape {
+    static_assert(
+        ((Is >= 0 || Is == -1) && ...),
+        "The arguments to nanobind::shape must either be positive or equal to -1"
+    );
     static constexpr size_t size = sizeof...(Is);
 };
 
@@ -84,10 +80,11 @@ struct numpy { };
 struct tensorflow { };
 struct pytorch { };
 struct jax { };
+struct cupy { };
 struct ro { };
 
 template <typename T> struct ndarray_traits {
-    static constexpr bool is_complex = detail::is_complex<T>::value;
+    static constexpr bool is_complex = detail::is_complex_v<T>;
     static constexpr bool is_float   = std::is_floating_point_v<T>;
     static constexpr bool is_bool    = std::is_same_v<std::remove_cv_t<T>, bool>;
     static constexpr bool is_int     = std::is_integral_v<T> && !is_bool;
@@ -103,7 +100,7 @@ constexpr bool is_ndarray_scalar_v =
 
 template <typename> struct ndim_shape;
 template <size_t... S> struct ndim_shape<std::index_sequence<S...>> {
-    using type = shape<((void) S, any)...>;
+    using type = shape<((void) S, -1)...>;
 };
 
 NAMESPACE_END(detail)
@@ -138,7 +135,7 @@ template <typename T> constexpr dlpack::dtype dtype() {
 
 NAMESPACE_BEGIN(detail)
 
-enum class ndarray_framework : int { none, numpy, tensorflow, pytorch, jax };
+enum class ndarray_framework : int { none, numpy, tensorflow, pytorch, jax, cupy };
 
 struct ndarray_req {
     dlpack::dtype dtype;
@@ -227,16 +224,16 @@ template<> struct ndarray_arg<ro> {
     }
 };
 
-template <size_t... Is> struct ndarray_arg<shape<Is...>> {
+template <ssize_t... Is> struct ndarray_arg<shape<Is...>> {
     static constexpr size_t size = sizeof...(Is);
     static constexpr auto name =
         const_name("shape=(") +
-        concat(const_name<Is == any>(const_name("*"), const_name<Is>())...) +
+        concat(const_name<Is == -1>(const_name("*"), const_name<(size_t) Is>())...) +
         const_name(")");
 
     static void apply(ndarray_req &tr) {
         size_t i = 0;
-        ((tr.shape[i++] = Is), ...);
+        ((tr.shape[i++] = (size_t) Is), ...);
         tr.ndim = (uint32_t) sizeof...(Is);
         tr.req_shape = true;
     }
@@ -281,7 +278,7 @@ template <typename T, typename... Ts> struct ndarray_info<T, Ts...>  : ndarray_i
                            T, typename ndarray_info<Ts...>::scalar_type>;
 };
 
-template <size_t... Is, typename... Ts> struct ndarray_info<shape<Is...>, Ts...> : ndarray_info<Ts...> {
+template <ssize_t... Is, typename... Ts> struct ndarray_info<shape<Is...>, Ts...> : ndarray_info<Ts...> {
     using shape_type = shape<Is...>;
 };
 
@@ -311,6 +308,10 @@ template <typename... Ts> struct ndarray_info<tensorflow, Ts...> : ndarray_info<
 template <typename... Ts> struct ndarray_info<jax, Ts...> : ndarray_info<Ts...> {
     constexpr static auto name = const_name("jaxlib.xla_extension.DeviceArray");
     constexpr static ndarray_framework framework = ndarray_framework::jax;
+};
+template <typename... Ts> struct ndarray_info<cupy, Ts...> : ndarray_info<Ts...> {
+    constexpr static auto name = const_name("cupy.ndarray");
+    constexpr static ndarray_framework framework = ndarray_framework::cupy;
 };
 
 
@@ -347,14 +348,14 @@ template <typename Scalar, typename Shape, char Order> struct ndarray_view {
 private:
     template <typename...> friend class ndarray;
 
-    template <size_t... I1, size_t... I2>
+    template <size_t... I1, ssize_t... I2>
     ndarray_view(Scalar *data, const int64_t *shape, const int64_t *strides,
                  std::index_sequence<I1...>, nanobind::shape<I2...>)
         : m_data(data) {
 
         /* Initialize shape/strides with compile-time knowledge if
            available (to permit vectorization, loop unrolling, etc.) */
-        ((m_shape[I1] = (I2 == any) ? shape[I1] : I2), ...);
+        ((m_shape[I1] = (I2 == -1) ? shape[I1] : (int64_t) I2), ...);
         ((m_strides[I1] = strides[I1]), ...);
 
         if constexpr (Order == 'F') {
@@ -391,23 +392,23 @@ public:
     template <typename... Args2>
     explicit ndarray(const ndarray<Args2...> &other) : ndarray(other.m_handle) { }
 
-    ndarray(std::conditional_t<std::is_const_v<Scalar>, const void *, void *> value,
+    ndarray(std::conditional_t<std::is_const_v<Scalar>, const void *, void *> data,
             size_t ndim,
             const size_t *shape,
-            handle owner = nanobind::handle(),
+            handle owner,
             const int64_t *strides = nullptr,
             dlpack::dtype dtype = nanobind::dtype<Scalar>(),
             int32_t device_type = device::cpu::value,
             int32_t device_id = 0) {
         m_handle = detail::ndarray_create(
-            (void *) value, ndim, shape, owner.ptr(), strides, &dtype,
+            (void *) data, ndim, shape, owner.ptr(), strides, &dtype,
             std::is_const_v<Scalar>, device_type, device_id);
         m_dltensor = *detail::ndarray_inc_ref(m_handle);
     }
 
-    ndarray(std::conditional_t<std::is_const_v<Scalar>, const void *, void *> value,
+    ndarray(std::conditional_t<std::is_const_v<Scalar>, const void *, void *> data,
             std::initializer_list<size_t> shape,
-            handle owner = nanobind::handle(),
+            handle owner,
             std::initializer_list<int64_t> strides = { },
             dlpack::dtype dtype = nanobind::dtype<Scalar>(),
             int32_t device_type = device::cpu::value,
@@ -417,7 +418,7 @@ public:
             detail::fail("ndarray(): shape and strides have incompatible size!");
 
         m_handle = detail::ndarray_create(
-            (void *) value, shape.size(), shape.begin(), owner.ptr(),
+            (void *) data, shape.size(), shape.begin(), owner.ptr(),
             (strides.size() == 0) ? nullptr : strides.begin(), &dtype,
             std::is_const_v<Scalar>, device_type, device_id);
 
@@ -466,7 +467,7 @@ public:
     detail::ndarray_handle *handle() const { return m_handle; }
 
     size_t size() const {
-        size_t ret = 1;
+        size_t ret = is_valid();
         for (size_t i = 0; i < ndim(); ++i)
             ret *= shape(i);
         return ret;
@@ -497,7 +498,7 @@ public:
                                   byte_offset(indices...));
     }
 
-    template <typename... Extra> NB_INLINE auto view() {
+    template <typename... Extra> NB_INLINE auto view() const {
         using Info2 = typename ndarray<Args..., Extra...>::Info;
         using Scalar2 = typename Info2::scalar_type;
         using Shape2 = typename Info2::shape_type;
@@ -571,6 +572,10 @@ template <typename... Args> struct type_caster<ndarray<Args...>> {
         detail::ndarray_req req;
         req.shape = shape;
         (detail::ndarray_arg<Args>::apply(req), ...);
+        if (src.is_none()) {
+            value = ndarray<Args...>();
+            return true;
+        }
         value = ndarray<Args...>(ndarray_import(
             src.ptr(), &req, flags & (uint8_t) cast_flags::convert, cleanup));
         return value.is_valid();
@@ -578,7 +583,7 @@ template <typename... Args> struct type_caster<ndarray<Args...>> {
 
     static handle from_cpp(const ndarray<Args...> &tensor, rv_policy policy,
                            cleanup_list *cleanup) noexcept {
-        return ndarray_wrap(tensor.handle(), int(Value::Info::framework), policy, cleanup);
+        return ndarray_wrap(tensor.handle(), Value::Info::framework, policy, cleanup);
     }
 };
 

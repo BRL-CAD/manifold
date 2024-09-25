@@ -1,42 +1,48 @@
 include(FetchContent)
 include(GNUInstallDirs)
 find_package(PkgConfig QUIET)
-find_package(Clipper2)
+
 if(MANIFOLD_PAR STREQUAL "TBB")
+    find_package(Threads REQUIRED)
     find_package(TBB QUIET)
-endif()
-if (PKG_CONFIG_FOUND)
-    if (NOT Clipper2_FOUND)
-        pkg_check_modules(Clipper2 Clipper2)
+    if(APPLE)
+        find_package(oneDPL QUIET)
     endif()
-    if(MANIFOLD_PAR STREQUAL "TBB" AND NOT TBB_FOUND)
+    if(NOT TBB_FOUND AND PKG_CONFIG_FOUND)
         pkg_check_modules(TBB tbb)
     endif()
 endif()
-if(Clipper2_FOUND)
-    add_library(Clipper2 SHARED IMPORTED)
-    set_property(TARGET Clipper2 PROPERTY
-        IMPORTED_LOCATION ${Clipper2_LINK_LIBRARIES})
-    if(WIN32)
-        set_property(TARGET Clipper2 PROPERTY
-            IMPORTED_IMPLIB ${Clipper2_LINK_LIBRARIES})
+
+if(MANIFOLD_CROSS_SECTION)
+    find_package(Clipper2 QUIET)
+    if(NOT Clipper2_FOUND AND PKG_CONFIG_FOUND)
+        pkg_check_modules(Clipper2 Clipper2)
     endif()
-    target_include_directories(Clipper2 INTERFACE ${Clipper2_INCLUDE_DIRS})
-else()
-    message(STATUS "clipper2 not found, downloading from source")
-    set(CLIPPER2_UTILS OFF)
-    set(CLIPPER2_EXAMPLES OFF)
-    set(CLIPPER2_TESTS OFF)
-    set(CLIPPER2_USINGZ "OFF" CACHE STRING "Preempt cache default of USINGZ (we only use 2d)")
-    FetchContent_Declare(Clipper2
-        GIT_REPOSITORY https://github.com/AngusJohnson/Clipper2.git
-        GIT_TAG ff378668baae3570e9d8070aa9eb339bdd5a6aba
-        GIT_PROGRESS TRUE
-        SOURCE_SUBDIR CPP
-    )
-    FetchContent_MakeAvailable(Clipper2)
-    if(NOT EMSCRIPTEN)
-        install(TARGETS Clipper2)
+    if(Clipper2_FOUND)
+        add_library(Clipper2 SHARED IMPORTED)
+        set_property(TARGET Clipper2 PROPERTY
+            IMPORTED_LOCATION ${Clipper2_LINK_LIBRARIES})
+        if(WIN32)
+            set_property(TARGET Clipper2 PROPERTY
+                IMPORTED_IMPLIB ${Clipper2_LINK_LIBRARIES})
+        endif()
+        target_include_directories(Clipper2 INTERFACE ${Clipper2_INCLUDE_DIRS})
+    else()
+        message(STATUS "clipper2 not found, downloading from source")
+        set(CLIPPER2_UTILS OFF)
+        set(CLIPPER2_EXAMPLES OFF)
+        set(CLIPPER2_TESTS OFF)
+        set(CLIPPER2_USINGZ "OFF" CACHE STRING "Preempt cache default of USINGZ (we only use 2d)")
+        FetchContent_Declare(Clipper2
+            GIT_REPOSITORY https://github.com/AngusJohnson/Clipper2.git
+            GIT_TAG ff378668baae3570e9d8070aa9eb339bdd5a6aba
+            GIT_PROGRESS TRUE
+            SOURCE_SUBDIR CPP
+        )
+        FetchContent_MakeAvailable(Clipper2)
+        if(NOT EMSCRIPTEN)
+            install(TARGETS Clipper2)
+        endif()
     endif()
 endif()
 

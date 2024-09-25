@@ -15,31 +15,14 @@
 project (manifold)
 
 file(GLOB_RECURSE SOURCE_FILES CONFIGURE_DEPENDS *.cpp)
-set(SOURCE_FILES ${SOURCE_FILES}
-  	${PROJECT_SOURCE_DIR}/../third_party/quickhull/QuickHull.cpp)
-
-if(MANIFOLD_EXPORT)
-	find_package(ASSETIMPORT REQUIRED)
-	set(SOURCE_FILES ${SOURCE_FILES}
-		${PROJECT_SOURCE_DIR}/../../meshIO/src/meshIO.cpp)
-	include_directories(
-		${PROJECT_SOURCE_DIR}/../../meshIO/include
-		${ASSETIMPORT_INCLUDE_DIR}
-		)
-	install(FILES ${PROJECT_SOURCE_DIR}/../../meshIO/include/meshIO.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/manifold)
-endif(MANIFOLD_EXPORT)
-
 add_library(${PROJECT_NAME} ${SOURCE_FILES})
 
 target_include_directories(${PROJECT_NAME} PUBLIC
-    $<INSTALL_INTERFACE:include/${CMAKE_PROJECT_NAME}>
-    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
-    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/../third_party/quickhull>
-    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/../../meshIO/include>
-	 )
+    $<INSTALL_INTERFACE:include>
+    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>)
 target_link_libraries(${PROJECT_NAME}
-    PUBLIC utilities sdf
-	 PRIVATE collider polygon ${MANIFOLD_INCLUDE} ${ASSETIMPORT_LIBRARY}
+    PUBLIC utilities
+    PRIVATE $<BUILD_INTERFACE:collider> polygon ${MANIFOLD_INCLUDE}
 )
 
 target_compile_options(${PROJECT_NAME} PRIVATE ${MANIFOLD_FLAGS})
@@ -49,4 +32,4 @@ target_compile_features(${PROJECT_NAME}
 )
 
 install(TARGETS ${PROJECT_NAME} EXPORT manifoldTargets)
-install(FILES include/manifold.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/${CMAKE_PROJECT_NAME})
+install(FILES include/manifold/manifold.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/${CMAKE_PROJECT_NAME})

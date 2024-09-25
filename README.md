@@ -22,11 +22,11 @@ may solve the problem.*
 
 If you prefer Python to JS/TS, make your own copy of the example notebook above. It demonstrates interop between our [`manifold3d`](https://pypi.org/project/manifold3d/) PyPI library and the popular [`trimesh`](https://pypi.org/project/trimesh/) library, including showing the interactive model right in the notebook and saving 3D model output.
 
-![A metallic Menger sponge](https://elalish.github.io/manifold/samples/models/mengerSponge3.webp "A metallic Menger sponge")
+![A metallic Menger sponge](https://manifoldcad.org/samples/models/mengerSponge3.webp "A metallic Menger sponge")
 
 # Manifold
 
-[**API Documentation**](https://elalish.github.io/manifold/docs/html/topics.html) | [**Algorithm Documentation**](https://github.com/elalish/manifold/wiki/Manifold-Library) | [**Blog Posts**](https://elalish.blogspot.com/search/label/Manifold) | [**Web Examples**](https://elalish.github.io/manifold/model-viewer.html)
+[**C++ Documentation**](https://manifoldcad.org/docs/html/topics.html) | [**TS Documentation**](https://manifoldcad.org/jsdocs) | [**Algorithm Documentation**](https://github.com/elalish/manifold/wiki/Manifold-Library) | [**Blog Posts**](https://elalish.blogspot.com/search/label/Manifold) | [**Web Examples**](https://manifoldcad.org/model-viewer.html)
 
 [Manifold](https://github.com/elalish/manifold) is a geometry library dedicated to creating and operating on manifold triangle meshes. A [manifold mesh](https://github.com/elalish/manifold/wiki/Manifold-Library#manifoldness) is a mesh that represents a solid object, and so is very important in manufacturing, CAD, structural analysis, etc. Further information can be found on the [wiki](https://github.com/elalish/manifold/wiki/Manifold-Library).
 
@@ -34,13 +34,11 @@ This is a modern C++ library that Github's CI verifies builds and runs on a vari
 
 System Dependencies (note that we will automatically download the dependency if there is no such package on the system):
 - [`GLM`](https://github.com/g-truc/glm/): A compact header-only vector library.
-- [`Thrust`](https://github.com/NVIDIA/thrust): NVIDIA's parallel algorithms library (basically a superset of C++17 std::parallel_algorithms)
 - [`tbb`](https://github.com/oneapi-src/oneTBB/): Intel's thread building blocks library. (only when `MANIFOLD_PAR=TBB` is enabled)
 - [`gtest`](https://github.com/google/googletest/): Google test library (only when test is enabled, i.e. `MANIFOLD_TEST=ON`)
 
 Other dependencies:
 - [`Clipper2`](https://github.com/AngusJohnson/Clipper2): provides our 2D subsystem
-- [`quickhull`](https://github.com/akuukka/quickhull): 3D convex hull algorithm.
 
 ## What's here
 
@@ -48,7 +46,7 @@ This library is fast with guaranteed manifold output. As such you need manifold 
 
 The most significant contribution here is a guaranteed-manifold [mesh Boolean](https://github.com/elalish/manifold/wiki/Manifold-Library#mesh-boolean) algorithm, which I believe is the first of its kind. If you know of another, please open a discussion - a mesh Boolean algorithm robust to edge cases has been an open problem for many years. Likewise, if the Boolean here ever fails you, please submit an issue! This Boolean forms the basis of a CAD kernel, as it allows simple shapes to be combined into more complex ones.
 
-To aid in speed, this library makes extensive use of parallelization, generally through Nvidia's Thrust library. You can switch between the TBB, and serial C++ backends by setting a CMake flag. Not everything is so parallelizable, for instance a [polygon triangulation](https://github.com/elalish/manifold/wiki/Manifold-Library#polygon-triangulation) algorithm is included which is serial. Even if compiled with parallel backend, the code will still fall back to the serial version of the algorithms if the problem size is small. The WASM build is serial-only for now, but still fast.
+To aid in speed, this library makes extensive use of parallelization, generally through PSTL. You can switch between the TBB, and serial C++ backends by setting a CMake flag. Not everything is so parallelizable, for instance a [polygon triangulation](https://github.com/elalish/manifold/wiki/Manifold-Library#polygon-triangulation) algorithm is included which is serial. Even if compiled with parallel backend, the code will still fall back to the serial version of the algorithms if the problem size is small. The WASM build is serial-only for now, but still fast.
 
 > Note: OMP and CUDA backends are now removed
 
@@ -73,6 +71,7 @@ CMake flags (usage e.g. `-DMANIFOLD_DEBUG=ON`):
 - `MANIFOLD_CBIND=[<OFF>, ON]`: Build C FFI binding.
 - `MANIFOLD_PYBIND=[OFF, <ON>]`: Build python binding.
 - `MANIFOLD_PAR=[<NONE>, TBB]`: Provides multi-thread parallelization, requires `libtbb-dev` if `TBB` backend is selected.
+- `MANIFOLD_CROSS_SECTION=[OFF, <ON>]`: Build CrossSection for 2D support (needed by language bindings).
 - `MANIFOLD_EXPORT=[<OFF>, ON]`: Enables GLB export of 3D models from the tests, requires `libassimp-dev`.
 - `MANIFOLD_DEBUG=[<OFF>, ON]`: Enables internal assertions and exceptions.
 - `MANIFOLD_TEST=[OFF, <ON>]`: Build unittests.
@@ -83,7 +82,6 @@ CMake flags (usage e.g. `-DMANIFOLD_DEBUG=ON`):
 Offline building:
 - `FETCHCONTENT_SOURCE_DIR_GLM`: path to glm source.
 - `FETCHCONTENT_SOURCE_DIR_GOOGLETEST`: path to googletest source.
-- `FETCHCONTENT_SOURCE_DIR_THRUST`: path to NVIDIA thrust source.
 
 The build instructions used by our CI are in [manifold.yml](https://github.com/elalish/manifold/blob/master/.github/workflows/manifold.yml), which is a good source to check if something goes wrong and for instructions specific to other platforms, like Windows.
 

@@ -14,23 +14,19 @@
 
 project(meshIO)
 
-find_package(ASSETIMPORT REQUIRED)
-
 add_library(${PROJECT_NAME} src/meshIO.cpp)
 
 target_include_directories(${PROJECT_NAME} PUBLIC
-    $<INSTALL_INTERFACE:include/${CMAKE_PROJECT_NAME}>
-    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>
-	 $<BUILD_INTERFACE:${ASSETIMPORT_INCLUDE_DIR}>
-	 )
+    $<INSTALL_INTERFACE:include>
+    $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/include>)
 
 target_link_libraries(${PROJECT_NAME}
     PUBLIC manifold
-	 PRIVATE ${ASSETIMPORT_LIBRARY}
+    PRIVATE assimp::assimp
 )
 
 target_compile_options(${PROJECT_NAME} PRIVATE ${MANIFOLD_FLAGS})
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_17)
 
 install(TARGETS ${PROJECT_NAME} EXPORT manifoldTargets)
-install(FILES include/meshIO.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/${CMAKE_PROJECT_NAME})
+install(FILES include/manifold/meshIO.h DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/${CMAKE_PROJECT_NAME})

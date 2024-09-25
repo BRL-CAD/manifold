@@ -59,6 +59,13 @@ suite('Examples', () => {
     expect(result.surfaceArea).to.be.closeTo(62046, 1, 'Surface Area');
   });
 
+  test('Auger', async () => {
+    const result = await runExample('Auger');
+    expect(result.genus).to.equal(0, 'Genus');
+    expect(result.volume).to.be.closeTo(16842, 1, 'Volume');
+    expect(result.surfaceArea).to.be.closeTo(10519, 1, 'Surface Area');
+  });
+
   test('Tetrahedron Puzzle', async () => {
     const result = await runExample('Tetrahedron Puzzle');
     expect(result.genus).to.equal(0, 'Genus');
@@ -111,7 +118,7 @@ suite('Examples', () => {
   test('Gyroid Module', async () => {
     const result = await runExample('Gyroid Module');
     expect(result.genus).to.equal(15, 'Genus');
-    expect(result.volume).to.be.closeTo(4167, 1, 'Volume');
-    expect(result.surfaceArea).to.be.closeTo(5642, 1, 'Surface Area');
+    expect(result.volume).to.be.closeTo(4175, 1, 'Volume');
+    expect(result.surfaceArea).to.be.closeTo(5645, 1, 'Surface Area');
   });
 });

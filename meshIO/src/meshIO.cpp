@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "meshIO.h"
+#include "manifold/meshIO.h"
 
 #include <algorithm>
 #include <iostream>
@@ -22,7 +22,7 @@
 #include "assimp/material.h"
 #include "assimp/postprocess.h"
 #include "assimp/scene.h"
-#include "optional_assert.h"
+#include "manifold/optional_assert.h"
 
 #ifndef AI_MATKEY_ROUGHNESS_FACTOR
 #include "assimp/pbrmaterial.h"
@@ -45,7 +45,7 @@ aiScene* CreateScene(const ExportOptions& options) {
   aiMaterial* material = scene->mMaterials[0];
   material->AddProperty(&options.mat.roughness, 1, AI_MATKEY_ROUGHNESS_FACTOR);
   material->AddProperty(&options.mat.metalness, 1, AI_MATKEY_METALLIC_FACTOR);
-  const glm::vec4& color = options.mat.color;
+  const vec4& color = options.mat.color;
   aiColor4D baseColor(color.r, color.g, color.b, color.a);
   material->AddProperty(&baseColor, 1, AI_MATKEY_COLOR_DIFFUSE);
 
@@ -112,7 +112,7 @@ namespace manifold {
  * manifoldness. However it is always done for STLs, as they cannot possibly be
  * manifold without this step.
  */
-Mesh ImportMesh(const std::string& filename, bool forceCleanup) {
+MeshGL ImportMesh(const std::string& filename, bool forceCleanup) {
   std::string ext = filename.substr(filename.find_last_of(".") + 1);
   const bool isYup = ext == "glb" || ext == "gltf";
 
@@ -143,20 +143,26 @@ Mesh ImportMesh(const std::string& filename, bool forceCleanup) {
 
   DEBUG_ASSERT(scene, userErr, importer.GetErrorString());
 
-  Mesh mesh_out;
+  MeshGL mesh_out;
+  mesh_out.numProp = 3;
   for (size_t i = 0; i < scene->mNumMeshes; ++i) {
     const aiMesh* mesh_i = scene->mMeshes[i];
     for (size_t j = 0; j < mesh_i->mNumVertices; ++j) {
       const aiVector3D vert = mesh_i->mVertices[j];
-      mesh_out.vertPos.push_back(isYup ? glm::vec3(vert.z, vert.x, vert.y)
-                                       : glm::vec3(vert.x, vert.y, vert.z));
+      if (isYup)
+        mesh_out.vertProperties.insert(mesh_out.vertProperties.end(),
+                                       {vert.z, vert.x, vert.y});
+      else
+        mesh_out.vertProperties.insert(mesh_out.vertProperties.end(),
+                                       {vert.x, vert.y, vert.z});
     }
     for (size_t j = 0; j < mesh_i->mNumFaces; ++j) {
       const aiFace face = mesh_i->mFaces[j];
       DEBUG_ASSERT(face.mNumIndices == 3, userErr,
                    "Non-triangular face in " + filename);
-      mesh_out.triVerts.emplace_back(face.mIndices[0], face.mIndices[1],
-                                     face.mIndices[2]);
+      mesh_out.triVerts.insert(
+          mesh_out.triVerts.end(),
+          {face.mIndices[0], face.mIndices[1], face.mIndices[2]});
     }
   }
   return mesh_out;
@@ -216,12 +222,12 @@ void ExportMesh(const std::string& filename, const MeshGL& mesh,
   if (hasColor) mesh_out->mColors[0] = new aiColor4D[mesh_out->mNumVertices];
 
   for (size_t i = 0; i < mesh_out->mNumVertices; ++i) {
-    glm::vec3 v;
+    vec3 v;
     for (int j : {0, 1, 2}) v[j] = mesh.vertProperties[i * mesh.numProp + j];
     mesh_out->mVertices[i] =
         isYup ? aiVector3D(v.y, v.z, v.x) : aiVector3D(v.x, v.y, v.z);
     if (!options.faceted) {
-      glm::vec3 n;
+      vec3 n;
       for (int j : {0, 1, 2})
         n[j] = mesh.vertProperties[i * mesh.numProp +
                                    options.mat.normalChannels[j]];
@@ -229,7 +235,7 @@ void ExportMesh(const std::string& filename, const MeshGL& mesh,
           isYup ? aiVector3D(n.y, n.z, n.x) : aiVector3D(n.x, n.y, n.z);
     }
     if (hasColor) {
-      glm::vec4 c;
+      vec4 c;
       for (int j : {0, 1, 2, 3})
         c[j] = options.mat.colorChannels[j] < 0
                    ? 1
@@ -297,16 +303,16 @@ void ExportMesh(const std::string& filename, const Mesh& mesh,
   }
 
   for (size_t i = 0; i < mesh_out->mNumVertices; ++i) {
-    const glm::vec3& v = mesh.vertPos[i];
+    const vec3& v = mesh.vertPos[i];
     mesh_out->mVertices[i] =
         isYup ? aiVector3D(v.y, v.z, v.x) : aiVector3D(v.x, v.y, v.z);
     if (!options.faceted) {
-      const glm::vec3& n = mesh.vertNormal[i];
+      const vec3& n = mesh.vertNormal[i];
       mesh_out->mNormals[i] =
           isYup ? aiVector3D(n.y, n.z, n.x) : aiVector3D(n.x, n.y, n.z);
     }
     if (!options.mat.vertColor.empty()) {
-      const glm::vec4& c = options.mat.vertColor[i];
+      const vec4& c = options.mat.vertColor[i];
       mesh_out->mColors[0][i] = aiColor4D(c.r, c.g, c.b, c.a);
     }
   }

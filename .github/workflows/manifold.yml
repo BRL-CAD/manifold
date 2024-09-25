@@ -12,11 +12,17 @@ on:
 
 jobs:
   build:
+    name: CrossSection:${{matrix.cross_section}} ${{matrix.parallel_backend == 'TBB' && 'TBB' || ''}} GCC ${{matrix.gcc}}
     timeout-minutes: 45
     strategy:
       matrix:
+        cross_section: [ON]
         parallel_backend: [NONE, TBB]
         gcc: [13, 14]
+        include:
+          - cross_section: OFF
+            parallel_backend: TBB
+            gcc: 14
     runs-on: ubuntu-24.04
     env:
       CC: gcc-${{ matrix.gcc }}
@@ -35,19 +41,21 @@ jobs:
       with:
         submodules: recursive
     - uses: jwlawson/actions-setup-cmake@v2
-    - name: Build ${{matrix.backend}}
+    - name: Build ${{matrix.parallel_backend}}
       if: matrix.parallel_backend != 'NONE'
       run: |
         mkdir build
         cd build
-        cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DMANIFOLD_PYBIND=ON -DMANIFOLD_DEBUG=ON -DMANIFOLD_EXPORT=ON -DMANIFOLD_PAR=${{matrix.parallel_backend}} .. && make
+        cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DMANIFOLD_PYBIND=ON -DMANIFOLD_DEBUG=ON -DMANIFOLD_FLAGS=-UNDEBUG -DMANIFOLD_CROSS_SECTION=${{matrix.cross_section}} -DMANIFOLD_EXPORT=ON -DMANIFOLD_PAR=${{matrix.parallel_backend}} .. && make
     - name: Test ${{matrix.parallel_backend}}
       if: matrix.parallel_backend != 'NONE'
       run: |
-        export PYTHONPATH=$PYTHONPATH:$(pwd)/build/bindings/python
         cd build/test
         ./manifold_test
-        cd ../../
+    - name: Test Python bindings ${{matrix.parallel_backend}}
+      if: matrix.parallel_backend != 'NONE' && matrix.cross_section == 'ON'
+      run: |
+        export PYTHONPATH=$PYTHONPATH:$(pwd)/build/bindings/python
         python3 bindings/python/examples/run_all.py -e
         python3 -m pytest
     - name: Coverage Report
@@ -65,7 +73,7 @@ jobs:
         cd ../
         lcov --capture --gcov-tool gcov-${{ matrix.gcc }} --ignore-errors mismatch --directory . --output-file ./code_coverage_test.info
         lcov --add-tracefile ./code_coverage_init.info --add-tracefile ./code_coverage_test.info --output-file ./code_coverage_total.info
-        lcov --remove ./code_coverage_total.info '/usr/*' '*/third_party/*' '*/test/*' '*/extras/*' '*/bindings/*' --output-file ./code_coverage.info
+        lcov --remove ./code_coverage_total.info '/usr/*' '*/test/*' '*/extras/*' '*/bindings/*' --output-file ./code_coverage.info
         cd ../
     - uses: codecov/codecov-action@v4
       if: matrix.parallel_backend == 'NONE'
@@ -98,7 +106,7 @@ jobs:
         mkdir build
         cd build
         cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DMANIFOLD_PYBIND=ON -DMANIFOLD_DEBUG=ON -DMANIFOLD_CBIND=ON -DMANIFOLD_PAR=TBB .. && make
-    - name: Test ${{matrix.parallel_backend}}
+    - name: Test
       run: |
         cd build/test
         ./manifold_test --gtest_filter=CBIND.*
@@ -123,8 +131,8 @@ jobs:
         # setup emscripten
         git clone https://github.com/emscripten-core/emsdk.git
         cd emsdk
-        ./emsdk install 3.1.45
-        ./emsdk activate 3.1.45
+        ./emsdk install 3.1.61
+        ./emsdk activate 3.1.61
     - uses: jwlawson/actions-setup-cmake@v2
     - name: Build WASM
       run: |
@@ -145,7 +153,7 @@ jobs:
         cp ../manifold.* ./dist/
     - name: Upload WASM files
       uses: actions/upload-artifact@v4
-      if: matrix.exception == 'ON'
+      if: matrix.exception == 'ON' && github.event_name == 'push'
       with:
         name: wasm
         path: bindings/wasm/examples/dist/
@@ -166,7 +174,7 @@ jobs:
         submodules: recursive
     - uses: jwlawson/actions-setup-cmake@v2
     - uses: ilammy/msvc-dev-cmd@v1
-    - name: Build ${{matrix.backend}}
+    - name: Build ${{matrix.parallel_backend}}
       shell: powershell
       run: |
         cmake . -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DMANIFOLD_DEBUG=ON -DMANIFOLD_PAR=${{matrix.parallel_backend}} -A x64 -B build
@@ -201,11 +209,13 @@ jobs:
       run: |
         mkdir build
         cd build
-        cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON -DMANIFOLD_PYBIND=OFF -DMANIFOLD_DEBUG=ON -DMANIFOLD_PAR=${{matrix.parallel_backend}} .. && make
-    - name: Test
-      run: |
-        cd build/test
-        ./manifold_test
+        export MXEDIR=/mxe
+        export MXE_TARGETS=x86_64-w64-mingw32.static.posix
+        export MXEDIR=$HOME/openscad_deps/mxe
+        export MXETARGETDIR=$MXEDIR/usr/$MXE_TARGETS
+        export PATH=/mxe/usr/bin:$PATH
+        export CMAKE=$MXE_TARGETS-cmake
+        $CMAKE -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=OFF -DMANIFOLD_PYBIND=OFF -DMANIFOLD_CBIND=OFF -DMANIFOLD_DEBUG=ON -DMANIFOLD_PAR=${{matrix.parallel_backend}} .. && make
 
   build_mac:
     timeout-minutes: 30
@@ -221,7 +231,7 @@ jobs:
         pip install trimesh pytest
     - name: Install TBB
       if: matrix.parallel_backend == 'TBB'
-      run: brew install tbb
+      run: brew install tbb onedpl
     - uses: actions/checkout@v4
       with:
         submodules: recursive

@@ -12,10 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-add_subdirectory(third_party)
 add_subdirectory(utilities)
 add_subdirectory(collider)
-add_subdirectory(cross_section)
+if(MANIFOLD_CROSS_SECTION)
+    add_subdirectory(cross_section)
+endif()
 add_subdirectory(polygon)
 add_subdirectory(manifold)
-add_subdirectory(sdf)

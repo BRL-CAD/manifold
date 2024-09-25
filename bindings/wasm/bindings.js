@@ -128,12 +128,12 @@ Module.setup = function() {
 
   Module.CrossSection.prototype.warp = function(func) {
     const wasmFuncPtr = addFunction(function(vec2Ptr) {
-      const x = getValue(vec2Ptr, 'float');
-      const y = getValue(vec2Ptr + 4, 'float');
+      const x = getValue(vec2Ptr, 'double');
+      const y = getValue(vec2Ptr + 8, 'double');
       const vert = [x, y];
       func(vert);
-      setValue(vec2Ptr, vert[0], 'float');
-      setValue(vec2Ptr + 4, vert[1], 'float');
+      setValue(vec2Ptr, vert[0], 'double');
+      setValue(vec2Ptr + 8, vert[1], 'double');
     }, 'vi');
     const out = this._Warp(wasmFuncPtr);
     removeFunction(wasmFuncPtr);
@@ -204,14 +204,14 @@ Module.setup = function() {
 
   Module.Manifold.prototype.warp = function(func) {
     const wasmFuncPtr = addFunction(function(vec3Ptr) {
-      const x = getValue(vec3Ptr, 'float');
-      const y = getValue(vec3Ptr + 4, 'float');
-      const z = getValue(vec3Ptr + 8, 'float');
+      const x = getValue(vec3Ptr, 'double');
+      const y = getValue(vec3Ptr + 8, 'double');
+      const z = getValue(vec3Ptr + 16, 'double');
       const vert = [x, y, z];
       func(vert);
-      setValue(vec3Ptr, vert[0], 'float');
-      setValue(vec3Ptr + 4, vert[1], 'float');
-      setValue(vec3Ptr + 8, vert[2], 'float');
+      setValue(vec3Ptr, vert[0], 'double');
+      setValue(vec3Ptr + 8, vert[1], 'double');
+      setValue(vec3Ptr + 16, vert[2], 'double');
     }, 'vi');
     const out = this._Warp(wasmFuncPtr);
     removeFunction(wasmFuncPtr);
@@ -228,26 +228,34 @@ Module.setup = function() {
     return this._CalculateNormals(normalIdx, minSharpAngle);
   };
 
+  Module.Manifold.prototype.asOriginal = function(propertyTolerance = []) {
+    const tol = new Module.Vector_f64();
+    toVec(tol, propertyTolerance);
+    const result = this._AsOriginal(tol);
+    tol.delete();
+    return result
+  };
+
   Module.Manifold.prototype.setProperties = function(numProp, func) {
     const oldNumProp = this.numProp();
     const wasmFuncPtr = addFunction(function(newPtr, vec3Ptr, oldPtr) {
       const newProp = [];
       for (let i = 0; i < numProp; ++i) {
-        newProp[i] = getValue(newPtr + 4 * i, 'float');
+        newProp[i] = getValue(newPtr + 8 * i, 'double');
       }
       const pos = [];
       for (let i = 0; i < 3; ++i) {
-        pos[i] = getValue(vec3Ptr + 4 * i, 'float');
+        pos[i] = getValue(vec3Ptr + 8 * i, 'double');
       }
       const oldProp = [];
       for (let i = 0; i < oldNumProp; ++i) {
-        oldProp[i] = getValue(oldPtr + 4 * i, 'float');
+        oldProp[i] = getValue(oldPtr + 8 * i, 'double');
       }
 
       func(newProp, pos, oldProp);
 
       for (let i = 0; i < numProp; ++i) {
-        setValue(newPtr + 4 * i, newProp[i], 'float');
+        setValue(newPtr + 8 * i, newProp[i], 'double');
       }
     }, 'viii');
     const out = this._SetProperties(numProp, wasmFuncPtr);
@@ -284,11 +292,17 @@ Module.setup = function() {
   };
 
   Module.Manifold.prototype.slice = function(height = 0.) {
-    return Module.CrossSection(this._Slice(height));
+    const polygonsVec = this._Slice(height);
+    const result = new CrossSectionCtor(polygonsVec, fillRuleToInt('Positive'));
+    disposePolygons(polygonsVec);
+    return result;
   };
 
   Module.Manifold.prototype.project = function() {
-    return Module.CrossSection(this._Project()).simplify(this.precision());
+    const polygonsVec = this._Project();
+    const result = new CrossSectionCtor(polygonsVec, fillRuleToInt('Positive'));
+    disposePolygons(polygonsVec);
+    return result.simplify(this.precision);
   };
 
   Module.Manifold.prototype.split = function(manifold) {
@@ -368,12 +382,13 @@ Module.setup = function() {
     }
 
     position(vert) {
-      return this.vertProperties.subarray(numProp * vert, numProp * vert + 3);
+      return this.vertProperties.subarray(
+          this.numProp * vert, this.numProp * vert + 3);
     }
 
     extras(vert) {
       return this.vertProperties.subarray(
-          numProp * vert + 3, numProp * (vert + 1));
+          this.numProp * vert + 3, this.numProp * (vert + 1));
     }
 
     tangent(halfedge) {
@@ -632,19 +647,21 @@ Module.setup = function() {
   Module.Manifold.difference = manifoldBatchbool('Difference');
   Module.Manifold.intersection = manifoldBatchbool('Intersection');
 
-  Module.Manifold.levelSet = function(sdf, bounds, edgeLength, level = 0) {
+  Module.Manifold.levelSet = function(
+      sdf, bounds, edgeLength, level = 0, precision = -1) {
     const bounds2 = {
       min: {x: bounds.min[0], y: bounds.min[1], z: bounds.min[2]},
       max: {x: bounds.max[0], y: bounds.max[1], z: bounds.max[2]},
     };
     const wasmFuncPtr = addFunction(function(vec3Ptr) {
-      const x = getValue(vec3Ptr, 'float');
-      const y = getValue(vec3Ptr + 4, 'float');
-      const z = getValue(vec3Ptr + 8, 'float');
+      const x = getValue(vec3Ptr, 'double');
+      const y = getValue(vec3Ptr + 8, 'double');
+      const z = getValue(vec3Ptr + 16, 'double');
       const vert = [x, y, z];
       return sdf(vert);
-    }, 'fi');
-    const out = Module._LevelSet(wasmFuncPtr, bounds2, edgeLength, level);
+    }, 'di');
+    const out =
+        Module._LevelSet(wasmFuncPtr, bounds2, edgeLength, level, precision);
     removeFunction(wasmFuncPtr);
     return out;
   };

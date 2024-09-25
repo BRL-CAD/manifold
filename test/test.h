@@ -16,14 +16,14 @@
 #include <ostream>
 
 #include "gtest/gtest.h"
-#include "manifold.h"
-#include "public.h"
+#include "manifold/common.h"
+#include "manifold/manifold.h"
 
 #ifdef MANIFOLD_EXPORT
-#include "meshIO.h"
+#include "manifold/meshIO.h"
 #endif
 
-// somehow gcc11 + gtest 1.11.0 is unable to print glm::ivec3
+// somehow gcc11 + gtest 1.11.0 is unable to print ivec3
 namespace glm {
 inline void PrintTo(const ivec3& point, std::ostream* os) {
   *os << "(" << point.x << "," << point.y << "," << point.x << ")";
@@ -45,20 +45,19 @@ struct MeshSize {
   int numPropVert = numVert;
 };
 
-Polygons SquareHole(float xOffset = 0.0);
-Mesh Csaszar();
-Mesh Gyroid();
-Mesh Tet();
+Polygons SquareHole(double xOffset = 0.0);
+MeshGL Csaszar();
+Manifold Gyroid();
 MeshGL TetGL();
 MeshGL CubeSTL();
 MeshGL CubeUV();
-MeshGL WithIndexColors(const Mesh& in);
+MeshGL WithIndexColors(const MeshGL& in);
 MeshGL WithPositionColors(const Manifold& in);
 MeshGL WithNormals(const Manifold& in);
 float GetMaxProperty(const MeshGL& mesh, int channel);
 float GetMinProperty(const MeshGL& mesh, int channel);
 void CheckFinite(const MeshGL& mesh);
-void Identical(const Mesh& mesh1, const Mesh& mesh2);
+void Identical(const MeshGL& mesh1, const MeshGL& mesh2);
 void RelatedGL(const Manifold& out, const std::vector<MeshGL>& originals,
                bool checkNormals = false, bool updateNormals = false);
 void ExpectMeshes(const Manifold& manifold,
@@ -69,3 +68,4 @@ void CheckGL(const Manifold& manifold);
 #ifdef MANIFOLD_EXPORT
 Manifold ReadMesh(const std::string& filename);
 #endif
+void RegisterPolygonTests();

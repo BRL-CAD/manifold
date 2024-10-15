@@ -16,8 +16,8 @@
 
 #include <vector>
 
+#include "./conv.h"
 #include "manifold/common.h"
-#include "manifold/conv.h"
 #include "manifold/cross_section.h"
 #include "manifold/manifold.h"
 #include "manifold/types.h"
@@ -237,7 +237,7 @@ ManifoldManifold *manifold_transform(void *mem, ManifoldManifold *m, double x1,
                                      double y1, double z1, double x2, double y2,
                                      double z2, double x3, double y3, double z3,
                                      double x4, double y4, double z4) {
-  auto mat = mat4x3(x1, y1, z1, x2, y2, z2, x3, y3, z3, x4, y4, z4);
+  auto mat = mat3x4({x1, y1, z1}, {x2, y2, z2}, {x3, y3, z3}, {x4, y4, z4});
   auto transformed = from_c(m)->Transform(mat);
   return to_c(new (mem) Manifold(transformed));
 }
@@ -298,6 +298,12 @@ ManifoldManifold *manifold_refine(void *mem, ManifoldManifold *m, int refine) {
 ManifoldManifold *manifold_refine_to_length(void *mem, ManifoldManifold *m,
                                             double length) {
   auto refined = from_c(m)->RefineToLength(length);
+  return to_c(new (mem) Manifold(refined));
+}
+
+ManifoldManifold *manifold_refine_to_precision(void *mem, ManifoldManifold *m,
+                                               double precision) {
+  auto refined = from_c(m)->RefineToPrecision(precision);
   return to_c(new (mem) Manifold(refined));
 }
 
@@ -577,6 +583,8 @@ int manifold_get_circular_segments(double radius) {
   return Quality::GetCircularSegments(radius);
 }
 
+void manifold_reset_to_circular_defaults() { Quality::ResetToDefaults(); }
+
 // memory size
 size_t manifold_cross_section_size() { return sizeof(CrossSection); }
 size_t manifold_cross_section_vec_size() {
@@ -590,6 +598,40 @@ size_t manifold_manifold_pair_size() { return sizeof(ManifoldManifoldPair); }
 size_t manifold_meshgl_size() { return sizeof(MeshGL); }
 size_t manifold_box_size() { return sizeof(Box); }
 size_t manifold_rect_size() { return sizeof(Rect); }
+
+// allocation
+ManifoldManifold *manifold_alloc_manifold() {
+  return to_c(static_cast<Manifold *>(malloc(manifold_manifold_size())));
+}
+ManifoldManifoldVec *manifold_alloc_manifold_vec() {
+  return to_c(static_cast<std::vector<Manifold> *>(
+      malloc(manifold_manifold_vec_size())));
+}
+ManifoldCrossSection *manifold_alloc_cross_section() {
+  return to_c(
+      static_cast<CrossSection *>(malloc(manifold_cross_section_size())));
+}
+ManifoldCrossSectionVec *manifold_alloc_cross_section_vec() {
+  return to_c(static_cast<std::vector<CrossSection> *>(
+      malloc(manifold_cross_section_vec_size())));
+}
+ManifoldSimplePolygon *manifold_alloc_simple_polygon() {
+  return to_c(
+      static_cast<SimplePolygon *>(malloc(manifold_simple_polygon_size())));
+}
+ManifoldPolygons *manifold_alloc_polygons() {
+  return to_c(static_cast<std::vector<SimplePolygon> *>(
+      malloc(manifold_polygons_size())));
+}
+ManifoldMeshGL *manifold_alloc_meshgl() {
+  return to_c(static_cast<MeshGL *>(malloc(manifold_meshgl_size())));
+}
+ManifoldBox *manifold_alloc_box() {
+  return to_c(static_cast<Box *>(malloc(manifold_box_size())));
+}
+ManifoldRect *manifold_alloc_rect() {
+  return to_c(static_cast<Rect *>(malloc(manifold_rect_size())));
+}
 
 // pointer free + destruction
 void manifold_delete_cross_section(ManifoldCrossSection *c) {

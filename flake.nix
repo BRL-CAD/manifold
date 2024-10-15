@@ -40,28 +40,19 @@
                 pkg-config
               ]) ++ build-tools;
               buildInputs = with pkgs; [
-                glm
                 clipper2
                 assimp
               ];
               cmakeFlags = [
-                "-DMANIFOLD_PYBIND=ON"
                 "-DMANIFOLD_CBIND=ON"
                 "-DMANIFOLD_EXPORT=ON"
                 "-DBUILD_SHARED_LIBS=ON"
                 "-DMANIFOLD_PAR=${pkgs.lib.strings.toUpper parallel-backend}"
               ];
-              prePatch = ''
-                substituteInPlace bindings/python/CMakeLists.txt \
-                  --replace 'DESTINATION ''${Python_SITEARCH}' 'DESTINATION "${placeholder "out"}/${pkgs.python3.sitePackages}"'
-              '';
               checkPhase = ''
                 cd test
                 ./manifold_test
-                cd ../../
-                PYTHONPATH=$PYTHONPATH:$(pwd)/build/bindings/python python3 bindings/python/examples/run_all.py
-                PYTHONPATH=$PYTHONPATH:$(pwd)/build/bindings/python python3 -m pytest
-                cd build
+                cd ../
               '';
             };
           parallelBackends = [
@@ -94,7 +85,6 @@
                 mkdir build
                 cd build
                 emcmake cmake -DCMAKE_BUILD_TYPE=Release \
-                -DFETCHCONTENT_SOURCE_DIR_GLM=${pkgs.glm.src} \
                 -DFETCHCONTENT_SOURCE_DIR_GOOGLETEST=${gtest-src} \
                 -DFETCHCONTENT_SOURCE_DIR_CLIPPER2=../clipper2 ..
               '';
@@ -122,7 +112,6 @@
               ];
               buildInputs = with pkgs; [
                 tbb
-                glm
                 clipper2
               ];
               nativeBuildInputs = with pkgs; [

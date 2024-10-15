@@ -19,7 +19,7 @@
 #ifdef MANIFOLD_CROSS_SECTION
 #include "manifold/cross_section.h"
 #endif
-#include "manifold/tri_dist.h"
+#include "../src/tri_dist.h"
 #include "samples.h"
 #include "test.h"
 
@@ -51,7 +51,7 @@ TEST(Manifold, GetMeshGL) {
 }
 
 TEST(Manifold, Empty) {
-  Mesh emptyMesh;
+  MeshGL emptyMesh;
   Manifold empty(emptyMesh);
 
   EXPECT_TRUE(empty.IsEmpty());
@@ -178,18 +178,6 @@ TEST(Manifold, Cylinder) {
   EXPECT_EQ(cylinder.NumTri(), 4 * n - 4);
 }
 
-TEST(Manifold, Normals) {
-  Mesh cube = Manifold::Cube(vec3(1), true).GetMesh();
-  const int nVert = cube.vertPos.size();
-  for (int i = 0; i < nVert; ++i) {
-    vec3 v = glm::normalize(cube.vertPos[i]);
-    vec3& n = cube.vertNormal[i];
-    EXPECT_FLOAT_EQ(v.x, n.x);
-    EXPECT_FLOAT_EQ(v.y, n.y);
-    EXPECT_FLOAT_EQ(v.z, n.z);
-  }
-}
-
 TEST(Manifold, Extrude) {
   Polygons polys = SquareHole();
   Manifold donut = Manifold::Extrude(polys, 1.0, 3);
@@ -225,8 +213,8 @@ TEST(Manifold, Revolve) {
     vug = Manifold::Revolve(rotatedPolys, 48);
     EXPECT_EQ(vug.Genus(), -1);
     auto prop = vug.GetProperties();
-    EXPECT_NEAR(prop.volume, 14.0 * glm::pi<double>(), 0.2);
-    EXPECT_NEAR(prop.surfaceArea, 30.0 * glm::pi<double>(), 0.2);
+    EXPECT_NEAR(prop.volume, 14.0 * kPi, 0.2);
+    EXPECT_NEAR(prop.surfaceArea, 30.0 * kPi, 0.2);
   }
 }
 
@@ -235,8 +223,8 @@ TEST(Manifold, Revolve2) {
   Manifold donutHole = Manifold::Revolve(polys, 48);
   EXPECT_EQ(donutHole.Genus(), 0);
   auto prop = donutHole.GetProperties();
-  EXPECT_NEAR(prop.volume, 48.0 * glm::pi<double>(), 1.0);
-  EXPECT_NEAR(prop.surfaceArea, 96.0 * glm::pi<double>(), 1.0);
+  EXPECT_NEAR(prop.volume, 48.0 * kPi, 1.0);
+  EXPECT_NEAR(prop.surfaceArea, 96.0 * kPi, 1.0);
 }
 
 #ifdef MANIFOLD_CROSS_SECTION
@@ -244,8 +232,8 @@ TEST(Manifold, Revolve3) {
   CrossSection circle = CrossSection::Circle(1, 32);
   Manifold sphere = Manifold::Revolve(circle.ToPolygons(), 32);
   auto prop = sphere.GetProperties();
-  EXPECT_NEAR(prop.volume, 4.0 / 3.0 * glm::pi<double>(), 0.1);
-  EXPECT_NEAR(prop.surfaceArea, 4 * glm::pi<double>(), 0.15);
+  EXPECT_NEAR(prop.volume, 4.0 / 3.0 * kPi, 0.1);
+  EXPECT_NEAR(prop.surfaceArea, 4 * kPi, 0.15);
 }
 #endif
 
@@ -259,10 +247,9 @@ TEST(Manifold, PartialRevolveOnYAxis) {
     revolute = Manifold::Revolve(rotatedPolys, 48, 180);
     EXPECT_EQ(revolute.Genus(), 1);
     auto prop = revolute.GetProperties();
-    EXPECT_NEAR(prop.volume, 24.0 * glm::pi<double>(), 1.0);
+    EXPECT_NEAR(prop.volume, 24.0 * kPi, 1.0);
     EXPECT_NEAR(prop.surfaceArea,
-                48.0 * glm::pi<double>() + 4.0 * 4.0 * 2.0 - 2.0 * 2.0 * 2.0,
-                1.0);
+                48.0 * kPi + 4.0 * 4.0 * 2.0 - 2.0 * 2.0 * 2.0, 1.0);
   }
 }
 
@@ -303,7 +290,7 @@ TEST(Manifold, Warp2) {
   Manifold shape =
       Manifold::Extrude(circle.ToPolygons(), 2, 10).Warp([](vec3& v) {
         int nSegments = 10;
-        double angleStep = 2.0 / 3.0 * glm::pi<double>() / nSegments;
+        double angleStep = 2.0 / 3.0 * kPi / nSegments;
         int zIndex = nSegments - 1 - std::round(v.z);
         double angle = zIndex * angleStep;
         v.z = v.y;
@@ -434,20 +421,20 @@ TEST(Manifold, Transform) {
   Manifold cube2 = cube;
   cube = cube.Rotate(30, 40, 50).Scale({6, 5, 4}).Translate({1, 2, 3});
 
-  mat3 rX(1.0, 0.0, 0.0,            //
-          0.0, cosd(30), sind(30),  //
-          0.0, -sind(30), cosd(30));
-  mat3 rY(cosd(40), 0.0, -sind(40),  //
-          0.0, 1.0, 0.0,             //
-          sind(40), 0.0, cosd(40));
-  mat3 rZ(cosd(50), sind(50), 0.0,   //
-          -sind(50), cosd(50), 0.0,  //
-          0.0, 0.0, 1.0);
-  mat3 s = mat3(1.0);
+  mat3 rX({1.0, 0.0, 0.0},            //
+          {0.0, cosd(30), sind(30)},  //
+          {0.0, -sind(30), cosd(30)});
+  mat3 rY({cosd(40), 0.0, -sind(40)},  //
+          {0.0, 1.0, 0.0},             //
+          {sind(40), 0.0, cosd(40)});
+  mat3 rZ({cosd(50), sind(50), 0.0},   //
+          {-sind(50), cosd(50), 0.0},  //
+          {0.0, 0.0, 1.0});
+  mat3 s;
   s[0][0] = 6;
   s[1][1] = 5;
   s[2][2] = 4;
-  mat4x3 transform = mat4x3(s * rZ * rY * rX);
+  mat3x4 transform = mat3x4(s * rZ * rY * rX, vec3(0.0));
   transform[3] = vec3(1, 2, 3);
   cube2 = cube2.Transform(transform);
 
@@ -487,8 +474,7 @@ TEST(Manifold, MeshRelationTransform) {
 }
 
 TEST(Manifold, MeshRelationRefine) {
-  const MeshGL in = Csaszar();
-  MeshGL inGL = WithIndexColors(in);
+  MeshGL inGL = WithIndexColors(Csaszar());
   Manifold csaszar(inGL);
 
   RelatedGL(csaszar, {inGL});
@@ -501,6 +487,22 @@ TEST(Manifold, MeshRelationRefine) {
   opt.mat.roughness = 1;
   opt.mat.colorChannels = ivec4(3, 4, 5, -1);
   if (options.exportModels) ExportMesh("csaszar.glb", csaszar.GetMeshGL(), opt);
+#endif
+}
+
+TEST(Manifold, MeshRelationRefinePrecision) {
+  MeshGL inGL = WithPositionColors(Csaszar());
+  Manifold csaszar = Manifold::Smooth(inGL);
+
+  csaszar = csaszar.RefineToPrecision(0.05);
+  ExpectMeshes(csaszar, {{2684, 5368, 3}});
+
+#ifdef MANIFOLD_EXPORT
+  ExportOptions opt;
+  opt.mat.roughness = 1;
+  opt.mat.colorChannels = ivec4(3, 4, 5, -1);
+  if (options.exportModels)
+    ExportMesh("csaszarSmooth.glb", csaszar.GetMeshGL(), opt);
 #endif
 }
 
@@ -554,7 +556,6 @@ TEST(Manifold, Merge) {
 }
 
 TEST(Manifold, PinchedVert) {
-  // TODO
   MeshGL shape;
   shape.numProp = 3;
   shape.vertProperties = {0,        0,  0,   //
@@ -609,7 +610,7 @@ TEST(Manifold, MirrorUnion) {
 
   auto vol_a = a.GetProperties().volume;
   EXPECT_FLOAT_EQ(vol_a * 2.75, result.GetProperties().volume);
-  EXPECT_TRUE(a.Mirror(vec3(0)).IsEmpty());
+  EXPECT_TRUE(a.Mirror(vec3(0.0)).IsEmpty());
 }
 
 TEST(Manifold, MirrorUnion2) {

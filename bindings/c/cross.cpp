@@ -12,8 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "./conv.h"
 #include "manifold/common.h"
-#include "manifold/conv.h"
 #include "manifold/cross_section.h"
 #include "manifold/types.h"
 
@@ -176,7 +176,7 @@ ManifoldCrossSection *manifold_cross_section_transform(void *mem,
                                                        double x1, double y1,
                                                        double x2, double y2,
                                                        double x3, double y3) {
-  auto mat = mat3x2(x1, y1, x2, y2, x3, y3);
+  auto mat = mat2x3({x1, y1}, {x2, y2}, {x3, y3});
   auto transformed = from_c(cs)->Transform(mat);
   return to_c(new (mem) CrossSection(transformed));
 }

@@ -1,4 +1,18 @@
-// linalg.h - 2.2 - Single-header public domain linear algebra library
+// Copyright 2024 The Manifold Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// Based on linalg.h - 2.2 - Single-header public domain linear algebra library
 //
 // The intent of this library is to provide the bulk of the functionality
 // you need to write programs that frequently use small, fixed-size vectors
@@ -17,31 +31,6 @@
 // Some features are deprecated. Define LINALG_FORWARD_COMPATIBLE to remove
 // them.
 
-// This is free and unencumbered software released into the public domain.
-//
-// Anyone is free to copy, modify, publish, use, compile, sell, or
-// distribute this software, either in source code form or as a compiled
-// binary, for any purpose, commercial or non-commercial, and by any
-// means.
-//
-// In jurisdictions that recognize copyright laws, the author or authors
-// of this software dedicate any and all copyright interest in the
-// software to the public domain. We make this dedication for the benefit
-// of the public at large and to the detriment of our heirs and
-// successors. We intend this dedication to be an overt act of
-// relinquishment in perpetuity of all present and future rights to this
-// software under copyright law.
-//
-// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
-// EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
-// MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
-// IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR
-// OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE,
-// ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
-// OTHER DEALINGS IN THE SOFTWARE.
-//
-// For more information, please refer to <http://unlicense.org/>
-
 #pragma once
 #ifndef LINALG_H
 #define LINALG_H
@@ -53,6 +42,11 @@
 #include <functional>   // For std::hash declaration
 #include <iosfwd>       // For forward definitions of std::ostream
 #include <type_traits>  // For std::enable_if, std::is_same, std::declval
+
+#ifdef MANIFOLD_DEBUG
+#include <iomanip>
+#include <iostream>
+#endif
 
 // In Visual Studio 2015, `constexpr` applied to a member function implies
 // `const`, which causes ambiguous overload resolution
@@ -758,8 +752,105 @@ struct std_copysign {
 };
 }  // namespace detail
 
-// Small, fixed-length vector type, consisting of exactly M elements of type T,
-// and presumed to be a column-vector unless otherwise noted
+/** @addtogroup LinAlg
+ * @ingroup Math
+ */
+
+/** @addtogroup vec
+ * @ingroup LinAlg
+ * @brief `linalg::vec<T,M>` defines a fixed-length vector containing exactly
+   `M` elements of type `T`.
+
+This data structure can be used to store a wide variety of types of data,
+including geometric vectors, points, homogeneous coordinates, plane equations,
+colors, texture coordinates, or any other situation where you need to manipulate
+a small sequence of numbers. As such, `vec<T,M>` is supported by a set of
+algebraic and component-wise functions, as well as a set of standard reductions.
+
+`vec<T,M>`:
+- is
+  [`DefaultConstructible`](https://en.cppreference.com/w/cpp/named_req/DefaultConstructible):
+  ```cpp
+  float3 v; // v contains 0,0,0
+  ```
+- is constructible from `M` elements of type `T`:
+  ```cpp
+  float3 v {1,2,3}; // v contains 1,2,3
+  ```
+- is
+  [`CopyConstructible`](https://en.cppreference.com/w/cpp/named_req/CopyConstructible)
+  and
+  [`CopyAssignable`](https://en.cppreference.com/w/cpp/named_req/CopyAssignable):
+  ```cpp
+  float3 v {1,2,3}; // v contains 1,2,3
+  float3 u {v};     // u contains 1,2,3
+  float3 w;         // w contains 0,0,0
+  w = u;            // w contains 1,2,3
+  ```
+- is
+  [`EqualityComparable`](https://en.cppreference.com/w/cpp/named_req/EqualityComparable)
+  and
+  [`LessThanComparable`](https://en.cppreference.com/w/cpp/named_req/LessThanComparable):
+  ```cpp
+  if(v == y) cout << "v and u contain equal elements in the same positions" <<
+  endl; if(v < u) cout << "v precedes u lexicographically" << endl;
+  ```
+- is **explicitly** constructible from a single element of type `T`:
+  ```cpp
+  float3 v = float3{4}; // v contains 4,4,4
+  ```
+- is **explicitly** constructible from a `vec<U,M>` of some other type `U`:
+  ```cpp
+  float3 v {1.1f,2.3f,3.5f}; // v contains 1.1,2.3,3.5
+  int3 u = int3{v};          // u contains 1,2,3
+  ```
+- has fields `x,y,z,w`:
+  ```cpp
+  float y = point.y;    // y contains second element of point
+  pixel.w = 0.5;        // fourth element of pixel set to 0.5
+  float s = tc.x;       // s contains first element of tc
+  ```
+- supports indexing:
+  ```cpp
+  float x = v[0]; // x contains first element of v
+  v[2] = 5;       // third element of v set to 5
+  ```
+- supports unary operators `+`, `-`, `!` and `~` in component-wise fashion:
+  ```cpp
+  auto v = -float{2,3}; // v is float2{-2,-3}
+  ```
+- supports binary operators `+`, `-`, `*`, `/`, `%`, `|`, `&`, `^`, `<<` and
+  `>>` in component-wise fashion:
+  ```cpp
+  auto v = float2{1,1} + float2{2,3}; // v is float2{3,4}
+  ```
+- supports binary operators with a scalar on the left or the right:
+  ```cpp
+  auto v = 2 * float3{1,2,3}; // v is float3{2,4,6}
+  auto u = float3{1,2,3} + 1; // u is float3{2,3,4}
+  ```
+- supports operators `+=`, `-=`, `*=`, `/=`, `%=`, `|=`, `&=`, `^=`, `<<=` and
+  `>>=` with vectors or scalars on the right:
+  ```cpp
+  float2 v {1,2}; v *= 3; // v is float2{3,6}
+  ```
+- supports operations on mixed element types:
+  ```cpp
+  auto v = float3{1,2,3} + int3{4,5,6}; // v is float3{5,7,9}
+  ```
+- supports [range-based
+  for](https://en.cppreference.com/w/cpp/language/range-for):
+  ```cpp
+  for(auto elem : float3{1,2,3}) cout << elem << ' '; // prints "1 2 3 "
+  ```
+- has a flat memory layout:
+  ```cpp
+  float3 v {1,2,3};
+  float * p = v.data(); // &v[i] == p+i
+  p[1] = 4; // v contains 1,4,3
+  ```
+ *  @{
+ */
 template <class T>
 struct vec<T, 1> {
   T x;
@@ -878,9 +969,102 @@ struct vec<T, 4> {
     return converter<U, vec>{}(*this);
   }
 };
+/** @} */
 
-// Small, fixed-size matrix type, consisting of exactly M rows and N columns of
-// type T, stored in column-major order.
+/** @addtogroup mat
+ * @ingroup LinAlg
+ * @brief `linalg::mat<T,M,N>` defines a fixed-size matrix containing exactly
+   `M` rows and `N` columns of type `T`, in column-major order.
+
+This data structure is supported by a set of algebraic and component-wise
+functions, as well as a set of standard reductions.
+
+`mat<T,M,N>`:
+- is
+  [`DefaultConstructible`](https://en.cppreference.com/w/cpp/named_req/DefaultConstructible):
+  ```cpp
+  float2x2 m; // m contains columns 0,0; 0,0
+  ```
+- is constructible from `N` columns of type `vec<T,M>`:
+  ```cpp
+  float2x2 m {{1,2},{3,4}}; // m contains columns 1,2; 3,4
+  ```
+- is constructible from `linalg::identity`:
+  ```cpp
+  float3x3 m = linalg::identity; // m contains columns 1,0,0; 0,1,0; 0,0,1
+  ```
+- is
+  [`CopyConstructible`](https://en.cppreference.com/w/cpp/named_req/CopyConstructible)
+  and
+  [`CopyAssignable`](https://en.cppreference.com/w/cpp/named_req/CopyAssignable):
+  ```cpp
+  float2x2 m {{1,2},{3,4}}; // m contains columns 1,2; 3,4
+  float2x2 n {m};           // n contains columns 1,2; 3,4
+  float2x2 p;               // p contains columns 0,0; 0,0
+  p = n;                    // p contains columns 1,2; 3,4
+  ```
+- is
+  [`EqualityComparable`](https://en.cppreference.com/w/cpp/named_req/EqualityComparable)
+  and
+  [`LessThanComparable`](https://en.cppreference.com/w/cpp/named_req/LessThanComparable):
+  ```cpp
+  if(m == n) cout << "m and n contain equal elements in the same positions" <<
+  endl; if(m < n) cout << "m precedes n lexicographically when compared in
+  column-major order" << endl;
+  ```
+- is **explicitly** constructible from a single element of type `T`:
+  ```cpp
+  float2x2 m {5}; // m contains columns 5,5; 5,5
+  ```
+- is **explicitly** constructible from a `mat<U,M,N>` of some other type `U`:
+  ```cpp
+  float2x2 m {int2x2{{5,6},{7,8}}}; // m contains columns 5,6; 7,8
+  ```
+- supports indexing into *columns*:
+  ```cpp
+  float2x3 m {{1,2},{3,4},{5,6}}; // m contains columns 1,2; 3,4; 5,6
+  float2 c = m[0];                // c contains 1,2
+  m[1]     = {7,8};               // m contains columns 1,2; 7,8; 5,6
+  ```
+- supports retrieval (but not assignment) of rows:
+  ```cpp
+  float2x3 m {{1,2},{3,4},{5,6}}; // m contains columns 1,2; 3,4; 5,6
+  float3 r = m.row(1);            // r contains 2,4,6
+  ```
+
+- supports unary operators `+`, `-`, `!` and `~` in component-wise fashion:
+  ```cpp
+  float2x2 m {{1,2},{3,4}}; // m contains columns 1,2; 3,4
+  float2x2 n = -m;          // n contains columns -1,-2; -3,-4
+  ```
+- supports binary operators `+`, `-`, `*`, `/`, `%`, `|`, `&`, `^`, `<<` and
+  `>>` in component-wise fashion:
+  ```cpp
+  float2x2 a {{0,0},{2,2}}; // a contains columns 0,0; 2,2
+  float2x2 b {{1,2},{1,2}}; // b contains columns 1,2; 1,2
+  float2x2 c = a + b;       // c contains columns 1,2; 3,4
+  ```
+
+- supports binary operators with a scalar on the left or the right:
+  ```cpp
+  auto m = 2 * float2x2{{1,2},{3,4}}; // m is float2x2{{2,4},{6,8}}
+  ```
+
+- supports operators `+=`, `-=`, `*=`, `/=`, `%=`, `|=`, `&=`, `^=`, `<<=` and
+  `>>=` with matrices or scalars on the right:
+  ```cpp
+  float2x2 v {{5,4},{3,2}};
+  v *= 3; // v is float2x2{{15,12},{9,6}}
+  ```
+
+- supports operations on mixed element types:
+
+- supports [range-based
+  for](https://en.cppreference.com/w/cpp/language/range-for) over columns
+
+- has a flat memory layout
+ *  @{
+ */
 template <class T, int M>
 struct mat<T, M, 1> {
   typedef vec<T, M> V;
@@ -988,9 +1172,14 @@ struct mat<T, M, 4> {
     return converter<U, mat>{}(*this);
   }
 };
+/** @} */
 
-// Define a type which will convert to the multiplicative identity of any square
-// matrix
+/** @addtogroup identity
+ * @ingroup LinAlg
+ * @brief Define a type which will convert to the multiplicative identity of any
+ * square matrix.
+ *  @{
+ */
 struct identity_t {
   constexpr explicit identity_t(int) {}
 };
@@ -1005,9 +1194,21 @@ struct converter<mat<T, 2, 2>, identity_t> {
   }
 };
 template <class T>
+struct converter<mat<T, 2, 3>, identity_t> {
+  constexpr mat<T, 2, 3> operator()(identity_t) const {
+    return {{1, 0}, {0, 1}, {0, 0}};
+  }
+};
+template <class T>
 struct converter<mat<T, 3, 3>, identity_t> {
   constexpr mat<T, 3, 3> operator()(identity_t) const {
     return {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
+  }
+};
+template <class T>
+struct converter<mat<T, 3, 4>, identity_t> {
+  constexpr mat<T, 3, 4> operator()(identity_t) const {
+    return {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}, {0, 0, 0}};
   }
 };
 template <class T>
@@ -1017,10 +1218,15 @@ struct converter<mat<T, 4, 4>, identity_t> {
   }
 };
 constexpr identity_t identity{1};
+/** @} */
 
-// Produce a scalar by applying f(A,B) -> A to adjacent pairs of elements from a
-// vec/mat in left-to-right/column-major order (matching the associativity of
-// arithmetic and logical operators)
+/** @addtogroup fold
+ * @ingroup LinAlg
+ * @brief Produce a scalar by applying f(A,B) -> A to adjacent pairs of elements
+ * from a vec/mat in left-to-right/column-major order (matching the
+ * associativity of arithmetic and logical operators).
+ *  @{
+ */
 template <class F, class A, class B>
 constexpr A fold(F f, A a, const vec<B, 1> &b) {
   return f(a, b.x);
@@ -1053,9 +1259,17 @@ template <class F, class A, class B, int M>
 constexpr A fold(F f, A a, const mat<B, M, 4> &b) {
   return fold(f, fold(f, fold(f, fold(f, a, b.x), b.y), b.z), b.w);
 }
+/** @} */
+
+/** @addtogroup apply
+ * @ingroup LinAlg
+ * @brief apply(f,...) applies the provided function in an elementwise fashion
+ * to its arguments, producing an object of the same dimensions.
+ *  @{
+ */
 
 // Type aliases for the result of calling apply(...) with various arguments, can
-// be used with return type SFINAE to constrian overload sets
+// be used with return type SFINAE to constrain overload sets
 template <class F, class... A>
 using apply_t = typename detail::apply<F, void, A...>::type;
 template <class F, class... A>
@@ -1088,9 +1302,14 @@ template <class A, class B, class F>
 constexpr apply_t<F, A, B> zip(const A &a, const B &b, F func) {
   return apply(func, a, b);
 }
+/** @} */
 
-// Relational operators are defined to compare the elements of two vectors or
-// matrices lexicographically, in column-major order
+/** @addtogroup comparison_ops
+ * @ingroup LinAlg
+ * @brief Relational operators are defined to compare the elements of two
+ * vectors or matrices lexicographically, in column-major order.
+ *  @{
+ */
 template <class A, class B>
 constexpr typename detail::any_compare<A, B>::type compare(const A &a,
                                                            const B &b) {
@@ -1126,8 +1345,13 @@ constexpr auto operator>=(const A &a,
                           const B &b) -> decltype(compare(a, b) >= 0) {
   return compare(a, b) >= 0;
 }
+/** @} */
 
-// Functions for coalescing scalar values
+/** @addtogroup reductions
+ * @ingroup LinAlg
+ * @brief Functions for coalescing scalar values.
+ *  @{
+ */
 template <class A>
 constexpr bool any(const A &a) {
   return fold(detail::op_or{}, false, a);
@@ -1166,8 +1390,13 @@ int argmax(const vec<T, M> &a) {
     if (a[i] > a[j]) j = i;
   return j;
 }
+/** @} */
 
-// Unary operators are defined component-wise for linalg types
+/** @addtogroup unary_ops
+ * @ingroup LinAlg
+ * @brief Unary operators are defined component-wise for linalg types.
+ *  @{
+ */
 template <class A>
 constexpr apply_t<detail::op_pos, A> operator+(const A &a) {
   return apply(detail::op_pos{}, a);
@@ -1184,9 +1413,16 @@ template <class A>
 constexpr apply_t<detail::op_not, A> operator!(const A &a) {
   return apply(detail::op_not{}, a);
 }
+/** @} */
 
-// Binary operators are defined component-wise for linalg types, EXCEPT for
-// `operator *`
+/** @addtogroup binary_ops
+ * @ingroup LinAlg
+ * @brief Binary operators are defined component-wise for linalg types, EXCEPT
+ * for `operator *`, which does standard matrix multiplication, scalar
+ * multiplication, and component-wise multiplication for same-size vectors. Use
+ * `cmul` for the matrix Hadamard product.
+ *  @{
+ */
 template <class A, class B>
 constexpr apply_t<detail::op_add, A, B> operator+(const A &a, const B &b) {
   return apply(detail::op_add{}, a, b);
@@ -1277,23 +1513,45 @@ template <class A, class B>
 constexpr auto operator>>=(A &a, const B &b) -> decltype(a = a >> b) {
   return a = a >> b;
 }
+/** @} */
 
-// Swizzles and subobjects
+/** @addtogroup swizzles
+ * @ingroup LinAlg
+ * @brief Swizzles and subobjects.
+ *  @{
+ */
+/**
+ * @brief Returns a vector containing the specified ordered indices, e.g.
+ * linalg::swizzle<1, 2, 0>(vec4(4, 5, 6, 7)) == vec3(5, 6, 4)
+ */
 template <int... I, class T, int M>
 constexpr vec<T, sizeof...(I)> swizzle(const vec<T, M> &a) {
   return {detail::getter<I>{}(a)...};
 }
+/**
+ * @brief Returns a vector containing the specified index range, e.g.
+ * linalg::subvec<1, 4>(vec4(4, 5, 6, 7)) == vec3(5, 6, 7)
+ */
 template <int I0, int I1, class T, int M>
 constexpr vec<T, I1 - I0> subvec(const vec<T, M> &a) {
   return detail::swizzle(a, detail::make_seq<I0, I1>{});
 }
+/**
+ * @brief Returns a matrix containing the specified row and column range:
+ * linalg::submat<rowStart, colStart, rowEnd, colEnd>
+ */
 template <int I0, int J0, int I1, int J1, class T, int M, int N>
 constexpr mat<T, I1 - I0, J1 - J0> submat(const mat<T, M, N> &a) {
   return detail::swizzle(a, detail::make_seq<I0, I1>{},
                          detail::make_seq<J0, J1>{});
 }
+/** @} */
 
-// Component-wise standard library math functions
+/** @addtogroup unary_STL
+ * @ingroup LinAlg
+ * @brief Component-wise standard library math functions.
+ *  @{
+ */
 template <class A>
 constexpr apply_t<detail::std_isfinite, A> isfinite(const A &a) {
   return apply(detail::std_isfinite{}, a);
@@ -1370,7 +1628,14 @@ template <class A>
 constexpr apply_t<detail::std_round, A> round(const A &a) {
   return apply(detail::std_round{}, a);
 }
+/** @} */
 
+/** @addtogroup binary_STL
+ * @ingroup LinAlg
+ * @brief Component-wise standard library math functions. Either argument can be
+ * a vector or a scalar.
+ *  @{
+ */
 template <class A, class B>
 constexpr apply_t<detail::std_fmod, A, B> fmod(const A &a, const B &b) {
   return apply(detail::std_fmod{}, a, b);
@@ -1387,8 +1652,14 @@ template <class A, class B>
 constexpr apply_t<detail::std_copysign, A, B> copysign(const A &a, const B &b) {
   return apply(detail::std_copysign{}, a, b);
 }
+/** @} */
 
-// Component-wise relational functions on vectors
+/** @addtogroup relational
+ * @ingroup LinAlg
+ * @brief Component-wise relational functions on vectors. Either argument can be
+ * a vector or a scalar.
+ *  @{
+ */
 template <class A, class B>
 constexpr apply_t<detail::op_eq, A, B> equal(const A &a, const B &b) {
   return apply(detail::op_eq{}, a, b);
@@ -1413,8 +1684,14 @@ template <class A, class B>
 constexpr apply_t<detail::op_ge, A, B> gequal(const A &a, const B &b) {
   return apply(detail::op_ge{}, a, b);
 }
+/** @} */
 
-// Component-wise selection functions on vectors
+/** @addtogroup selection
+ * @ingroup LinAlg
+ * @brief Component-wise selection functions on vectors. Either argument can be
+ * a vector or a scalar.
+ *  @{
+ */
 template <class A, class B>
 constexpr apply_t<detail::min, A, B> min(const A &a, const B &b) {
   return apply(detail::min{}, a, b);
@@ -1423,96 +1700,179 @@ template <class A, class B>
 constexpr apply_t<detail::max, A, B> max(const A &a, const B &b) {
   return apply(detail::max{}, a, b);
 }
+/**
+ * @brief Clamps the components of x between l and h, provided l[i] < h[i].
+ */
 template <class X, class L, class H>
 constexpr apply_t<detail::clamp, X, L, H> clamp(const X &x, const L &l,
                                                 const H &h) {
   return apply(detail::clamp{}, x, l, h);
 }
+/**
+ * @brief Returns the component from a if the corresponding component of p is
+ * true and from b otherwise.
+ */
 template <class P, class A, class B>
 constexpr apply_t<detail::select, P, A, B> select(const P &p, const A &a,
                                                   const B &b) {
   return apply(detail::select{}, p, a, b);
 }
+/**
+ * @brief Linear interpolation from a to b as t goes from 0 -> 1. Values beyond
+ * [a, b] will result if t is outside [0, 1].
+ */
 template <class A, class B, class T>
 constexpr apply_t<detail::lerp, A, B, T> lerp(const A &a, const B &b,
                                               const T &t) {
   return apply(detail::lerp{}, a, b, t);
 }
+/** @} */
 
-// Support for vector algebra
+/** @addtogroup vec_algebra
+ * @ingroup LinAlg
+ * @brief Support for vector algebra.
+ *  @{
+ */
+/**
+ * @brief shorthand for `cross({a.x,a.y,0}, {b.x,b.y,0}).z`
+ */
 template <class T>
 constexpr T cross(const vec<T, 2> &a, const vec<T, 2> &b) {
   return a.x * b.y - a.y * b.x;
 }
+/**
+ * @brief shorthand for `cross({0,0,a.z}, {b.x,b.y,0}).xy()`
+ */
 template <class T>
 constexpr vec<T, 2> cross(T a, const vec<T, 2> &b) {
   return {-a * b.y, a * b.x};
 }
+/**
+ * @brief shorthand for `cross({a.x,a.y,0}, {0,0,b.z}).xy()`
+ */
 template <class T>
 constexpr vec<T, 2> cross(const vec<T, 2> &a, T b) {
   return {a.y * b, -a.x * b};
 }
+/**
+ * @brief the [cross or vector
+ * product](https://en.wikipedia.org/wiki/Cross_product) of vectors `a` and `b`
+ */
 template <class T>
 constexpr vec<T, 3> cross(const vec<T, 3> &a, const vec<T, 3> &b) {
   return {a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x};
 }
+/**
+ * @brief [dot or inner product](https://en.wikipedia.org/wiki/Dot_product) of
+ * vectors `a` and `b`
+ */
 template <class T, int M>
 constexpr T dot(const vec<T, M> &a, const vec<T, M> &b) {
   return sum(a * b);
 }
+/**
+ * @brief *square* of the length or magnitude of vector `a`
+ */
 template <class T, int M>
 constexpr T length2(const vec<T, M> &a) {
   return dot(a, a);
 }
+/**
+ * @brief length or magnitude of a vector `a`
+ */
 template <class T, int M>
 T length(const vec<T, M> &a) {
   return std::sqrt(length2(a));
 }
+/**
+ * @brief unit length vector in the same direction as `a` (undefined for
+ zero-length vectors)
+
+ */
 template <class T, int M>
 vec<T, M> normalize(const vec<T, M> &a) {
   return a / length(a);
 }
+/**
+ * @brief *square* of the [Euclidean
+ * distance](https://en.wikipedia.org/wiki/Euclidean_distance) between points
+ * `a` and `b`
+ */
 template <class T, int M>
 constexpr T distance2(const vec<T, M> &a, const vec<T, M> &b) {
   return length2(b - a);
 }
+/**
+ * @brief [Euclidean distance](https://en.wikipedia.org/wiki/Euclidean_distance)
+ * between points `a` and `b`
+ */
 template <class T, int M>
 T distance(const vec<T, M> &a, const vec<T, M> &b) {
   return length(b - a);
 }
+/**
+ * @brief Return the angle in radians between two unit vectors.
+ */
 template <class T, int M>
 T uangle(const vec<T, M> &a, const vec<T, M> &b) {
   T d = dot(a, b);
   return d > 1 ? 0 : std::acos(d < -1 ? -1 : d);
 }
+/**
+ * @brief Return the angle in radians between two non-unit vectors.
+ */
 template <class T, int M>
 T angle(const vec<T, M> &a, const vec<T, M> &b) {
   return uangle(normalize(a), normalize(b));
 }
+/**
+ * @brief vector `v` rotated counter-clockwise by the angle `a` in
+ * [radians](https://en.wikipedia.org/wiki/Radian)
+ */
 template <class T>
 vec<T, 2> rot(T a, const vec<T, 2> &v) {
   const T s = std::sin(a), c = std::cos(a);
   return {v.x * c - v.y * s, v.x * s + v.y * c};
 }
+/**
+ * @brief vector `v` rotated counter-clockwise by the angle `a` in
+ * [radians](https://en.wikipedia.org/wiki/Radian) around the X axis
+ */
 template <class T>
 vec<T, 3> rotx(T a, const vec<T, 3> &v) {
   const T s = std::sin(a), c = std::cos(a);
   return {v.x, v.y * c - v.z * s, v.y * s + v.z * c};
 }
+/**
+ * @brief vector `v` rotated counter-clockwise by the angle `a` in
+ * [radians](https://en.wikipedia.org/wiki/Radian) around the Y axis
+ */
 template <class T>
 vec<T, 3> roty(T a, const vec<T, 3> &v) {
   const T s = std::sin(a), c = std::cos(a);
   return {v.x * c + v.z * s, v.y, -v.x * s + v.z * c};
 }
+/**
+ * @brief vector `v` rotated counter-clockwise by the angle `a` in
+ * [radians](https://en.wikipedia.org/wiki/Radian) around the Z axis
+ */
 template <class T>
 vec<T, 3> rotz(T a, const vec<T, 3> &v) {
   const T s = std::sin(a), c = std::cos(a);
   return {v.x * c - v.y * s, v.x * s + v.y * c, v.z};
 }
+/**
+ * @brief shorthand for `normalize(lerp(a,b,t))`
+ */
 template <class T, int M>
 vec<T, M> nlerp(const vec<T, M> &a, const vec<T, M> &b, T t) {
   return normalize(lerp(a, b, t));
 }
+/**
+ * @brief [spherical linear interpolation](https://en.wikipedia.org/wiki/Slerp)
+ * between unit vectors `a` and `b` (undefined for non-unit vectors) by
+ * parameter `t`
+ */
 template <class T, int M>
 vec<T, M> slerp(const vec<T, M> &a, const vec<T, M> &b, T t) {
   T th = uangle(a, b);
@@ -1520,17 +1880,37 @@ vec<T, M> slerp(const vec<T, M> &a, const vec<T, M> &b, T t) {
                  : a * (std::sin(th * (1 - t)) / std::sin(th)) +
                        b * (std::sin(th * t) / std::sin(th));
 }
+/** @} */
 
-// Support for quaternion algebra using 4D vectors, representing xi + yj + zk +
-// w
+/** @addtogroup quaternions
+ * @ingroup LinAlg
+ * @brief Support for quaternion algebra using 4D vectors of arbitrary length,
+ * representing xi + yj + zk + w.
+ *  @{
+ */
+/**
+ * @brief
+ * [conjugate](https://en.wikipedia.org/wiki/Quaternion#Conjugation,_the_norm,_and_reciprocal)
+ * of quaternion `q`
+ */
 template <class T>
 constexpr vec<T, 4> qconj(const vec<T, 4> &q) {
   return {-q.x, -q.y, -q.z, q.w};
 }
+/**
+ * @brief [inverse or
+ * reciprocal](https://en.wikipedia.org/wiki/Quaternion#Conjugation,_the_norm,_and_reciprocal)
+ * of quaternion `q` (undefined for zero-length quaternions)
+ */
 template <class T>
 vec<T, 4> qinv(const vec<T, 4> &q) {
   return qconj(q) / length2(q);
 }
+/**
+ * @brief
+ * [exponential](https://en.wikipedia.org/wiki/Quaternion#Exponential,_logarithm,_and_power_functions)
+ * of quaternion `q`
+ */
 template <class T>
 vec<T, 4> qexp(const vec<T, 4> &q) {
   const auto v = q.xyz();
@@ -1538,12 +1918,20 @@ vec<T, 4> qexp(const vec<T, 4> &q) {
   return std::exp(q.w) *
          vec<T, 4>{v * (vv > 0 ? std::sin(vv) / vv : 0), std::cos(vv)};
 }
+/**
+ * @brief
+ * [logarithm](https://en.wikipedia.org/wiki/Quaternion#Exponential,_logarithm,_and_power_functions)
+ * of quaternion `q`
+ */
 template <class T>
 vec<T, 4> qlog(const vec<T, 4> &q) {
   const auto v = q.xyz();
   const auto vv = length(v), qq = length(q);
   return {v * (vv > 0 ? std::acos(q.w / qq) / vv : 0), std::log(qq)};
 }
+/**
+ * @brief quaternion `q` raised to the exponent `p`
+ */
 template <class T>
 vec<T, 4> qpow(const vec<T, 4> &q, const T &p) {
   const auto v = q.xyz();
@@ -1551,6 +1939,11 @@ vec<T, 4> qpow(const vec<T, 4> &q, const T &p) {
   return std::pow(qq, p) *
          vec<T, 4>{v * (vv > 0 ? std::sin(p * th) / vv : 0), std::cos(p * th)};
 }
+/**
+ * @brief [Hamilton
+ * product](https://en.wikipedia.org/wiki/Quaternion#Hamilton_product) of
+ * quaternions `a` and `b`
+ */
 template <class T>
 constexpr vec<T, 4> qmul(const vec<T, 4> &a, const vec<T, 4> &b) {
   return {a.x * b.w + a.w * b.x + a.y * b.z - a.z * b.y,
@@ -1558,55 +1951,117 @@ constexpr vec<T, 4> qmul(const vec<T, 4> &a, const vec<T, 4> &b) {
           a.z * b.w + a.w * b.z + a.x * b.y - a.y * b.x,
           a.w * b.w - a.x * b.x - a.y * b.y - a.z * b.z};
 }
+/**
+ * @brief Multiply as many input quaternions together as desired.
+ */
 template <class T, class... R>
 constexpr vec<T, 4> qmul(const vec<T, 4> &a, R... r) {
   return qmul(a, qmul(r...));
 }
+/** @} */
 
-// Support for 3D spatial rotations using quaternions, via qmul(qmul(q, v),
-// qconj(q))
+/** @addtogroup quaternion_rotation
+ * @ingroup LinAlg
+ * @brief Support for 3D spatial rotations using normalized quaternions.
+ *  @{
+ */
+/**
+ * @brief efficient shorthand for `qrot(q, {1,0,0})`
+ */
 template <class T>
 constexpr vec<T, 3> qxdir(const vec<T, 4> &q) {
   return {q.w * q.w + q.x * q.x - q.y * q.y - q.z * q.z,
           (q.x * q.y + q.z * q.w) * 2, (q.z * q.x - q.y * q.w) * 2};
 }
+/**
+ * @brief efficient shorthand for `qrot(q, {0,1,0})`
+ */
 template <class T>
 constexpr vec<T, 3> qydir(const vec<T, 4> &q) {
   return {(q.x * q.y - q.z * q.w) * 2,
           q.w * q.w - q.x * q.x + q.y * q.y - q.z * q.z,
           (q.y * q.z + q.x * q.w) * 2};
 }
+/**
+ * @brief efficient shorthand for `qrot(q, {0,0,1})`
+ */
 template <class T>
 constexpr vec<T, 3> qzdir(const vec<T, 4> &q) {
   return {(q.z * q.x + q.y * q.w) * 2, (q.y * q.z - q.x * q.w) * 2,
           q.w * q.w - q.x * q.x - q.y * q.y + q.z * q.z};
 }
+/**
+ * @brief Create an equivalent mat3 rotation matrix from the input quaternion.
+ */
 template <class T>
 constexpr mat<T, 3, 3> qmat(const vec<T, 4> &q) {
   return {qxdir(q), qydir(q), qzdir(q)};
 }
+/**
+ * @brief Rotate a vector by a quaternion.
+ */
 template <class T>
 constexpr vec<T, 3> qrot(const vec<T, 4> &q, const vec<T, 3> &v) {
   return qxdir(q) * v.x + qydir(q) * v.y + qzdir(q) * v.z;
 }
+/**
+ * @brief Return the angle in radians of the axis-angle representation of the
+ * input normalized quaternion.
+ */
 template <class T>
 T qangle(const vec<T, 4> &q) {
   return std::atan2(length(q.xyz()), q.w) * 2;
 }
+/**
+ * @brief Return the normalized axis of the axis-angle representation of the
+ * input normalized quaternion.
+ */
 template <class T>
 vec<T, 3> qaxis(const vec<T, 4> &q) {
   return normalize(q.xyz());
 }
+/**
+ * @brief Linear interpolation that takes the shortest path - this is not
+ * geometrically sensible, consider qslerp instead.
+ */
 template <class T>
 vec<T, 4> qnlerp(const vec<T, 4> &a, const vec<T, 4> &b, T t) {
   return nlerp(a, dot(a, b) < 0 ? -b : b, t);
 }
+/**
+ * @brief Spherical linear interpolation that takes the shortest path.
+ */
 template <class T>
 vec<T, 4> qslerp(const vec<T, 4> &a, const vec<T, 4> &b, T t) {
   return slerp(a, dot(a, b) < 0 ? -b : b, t);
 }
+/**
+ * @brief Returns a normalized quaternion representing a rotation by angle in
+ * radians about the provided axis.
+ */
+template <class T>
+vec<T, 4> constexpr rotation_quat(const vec<T, 3> &axis, T angle) {
+  return {axis * std::sin(angle / 2), std::cos(angle / 2)};
+}
+/**
+ * @brief Returns a normalized quaternion representing the shortest rotation
+ * from orig vector to dest vector.
+ */
+template <class T>
+vec<T, 4> rotation_quat(const vec<T, 3> &orig, const vec<T, 3> &dest);
+/**
+ * @brief Returns a normalized quaternion representing the input rotation
+ * matrix, which should be orthonormal.
+ */
+template <class T>
+vec<T, 4> rotation_quat(const mat<T, 3, 3> &m);
+/** @} */
 
-// Support for matrix algebra
+/** @addtogroup mat_algebra
+ * @ingroup LinAlg
+ * @brief Support for matrix algebra.
+ *  @{
+ */
 template <class T, int M>
 constexpr vec<T, M> mul(const vec<T, M> &a, const T &b) {
   return cmul(a, b);
@@ -1771,8 +2226,13 @@ template <class T, int N>
 constexpr mat<T, N, N> inverse(const mat<T, N, N> &a) {
   return adjugate(a) / determinant(a);
 }
+/** @} */
 
-// Vectors and matrices can be used as ranges
+/** @addtogroup iterators
+ * @ingroup LinAlg
+ * @brief Vectors and matrices can be used as ranges.
+ *  @{
+ */
 template <class T, int M>
 T *begin(vec<T, M> &a) {
   return &a.x;
@@ -1805,9 +2265,13 @@ template <class T, int M, int N>
 const vec<T, M> *end(const mat<T, M, N> &a) {
   return begin(a) + N;
 }
+/** @} */
 
-// Factory functions for 3D spatial transformations (will possibly be removed or
-// changed in a future version)
+/** @addtogroup transforms
+ * @ingroup LinAlg
+ * @brief Factory functions for 3D spatial transformations.
+ *  @{
+ */
 enum fwd_axis {
   neg_z,
   pos_z
@@ -1817,30 +2281,6 @@ enum z_range {
   neg_one_to_one,
   zero_to_one
 };  // Should projection matrices map z into the range of [-1,1] or [0,1]?
-template <class T>
-vec<T, 4> constexpr rotation_quat(const vec<T, 3> &axis, T angle) {
-  return {axis * std::sin(angle / 2), std::cos(angle / 2)};
-}
-template <class T>
-vec<T, 4> constexpr rotation_quat(const vec<T, 3> &orig,
-                                  const vec<T, 3> &dest) {
-  T cosTheta = dot(orig, dest);
-  if (cosTheta >= 1 - std::numeric_limits<T>::epsilon()) {
-    return {0, 0, 0, 1};
-  }
-  if (cosTheta < -1 + std::numeric_limits<T>::epsilon()) {
-    vec<T, 3> axis = cross(vec<T, 3>(0, 0, 1), orig);
-    if (length2(axis) < std::numeric_limits<T>::epsilon())
-      axis = cross(vec<T, 3>(1, 0, 0), orig);
-    return rotation_quat(normalize(axis),
-                         3.14159265358979323846264338327950288);
-  }
-  vec<T, 3> axis = cross(orig, dest);
-  T s = std::sqrt((1 + cosTheta) * 2);
-  return {axis * (1 / s), s * 0.5};
-}
-template <class T>
-vec<T, 4> rotation_quat(const mat<T, 3, 3> &m);
 template <class T>
 mat<T, 4, 4> translation_matrix(const vec<T, 3> &translation) {
   return {{1, 0, 0, 0}, {0, 1, 0, 0}, {0, 0, 1, 0}, {translation, 1}};
@@ -1875,8 +2315,14 @@ mat<T, 4, 4> perspective_matrix(T fovy, T aspect, T n, T f, fwd_axis a = neg_z,
   T y = n * std::tan(fovy / 2), x = y * aspect;
   return frustum_matrix(-x, x, -y, y, n, f, a, z);
 }
+/** @} */
 
-// Provide implicit conversion between linalg::vec<T,M> and std::array<T,M>
+/** @addtogroup array
+ * @ingroup LinAlg
+ * @brief Provide implicit conversion between linalg::vec<T,M> and
+ * std::array<T,M>.
+ *  @{
+ */
 template <class T>
 struct converter<vec<T, 1>, std::array<T, 1>> {
   vec<T, 1> operator()(const std::array<T, 1> &a) const { return {a[0]}; }
@@ -1918,10 +2364,51 @@ struct converter<std::array<T, 4>, vec<T, 4>> {
     return {a[0], a[1], a[2], a[3]};
   }
 };
+/** @} */
+
+#ifdef MANIFOLD_DEBUG
+template <class T>
+std::ostream &operator<<(std::ostream &out, const vec<T, 1> &v) {
+  return out << '{' << v[0] << '}';
+}
+template <class T>
+std::ostream &operator<<(std::ostream &out, const vec<T, 2> &v) {
+  return out << '{' << v[0] << ',' << v[1] << '}';
+}
+template <class T>
+std::ostream &operator<<(std::ostream &out, const vec<T, 3> &v) {
+  return out << '{' << v[0] << ',' << v[1] << ',' << v[2] << '}';
+}
+template <class T>
+std::ostream &operator<<(std::ostream &out, const vec<T, 4> &v) {
+  return out << '{' << v[0] << ',' << v[1] << ',' << v[2] << ',' << v[3] << '}';
+}
+
+template <class T, int M>
+std::ostream &operator<<(std::ostream &out, const mat<T, M, 1> &m) {
+  return out << '{' << m[0] << '}';
+}
+template <class T, int M>
+std::ostream &operator<<(std::ostream &out, const mat<T, M, 2> &m) {
+  return out << '{' << m[0] << ',' << m[1] << '}';
+}
+template <class T, int M>
+std::ostream &operator<<(std::ostream &out, const mat<T, M, 3> &m) {
+  return out << '{' << m[0] << ',' << m[1] << ',' << m[2] << '}';
+}
+template <class T, int M>
+std::ostream &operator<<(std::ostream &out, const mat<T, M, 4> &m) {
+  return out << '{' << m[0] << ',' << m[1] << ',' << m[2] << ',' << m[3] << '}';
+}
+#endif
 }  // namespace linalg
 
 namespace std {
-// Provide specializations for std::hash<...> with linalg types
+/** @addtogroup hash
+ * @ingroup LinAlg
+ * @brief Provide specializations for std::hash<...> with linalg types.
+ *  @{
+ */
 template <class T>
 struct hash<linalg::vec<T, 1>> {
   std::size_t operator()(const linalg::vec<T, 1> &v) const {
@@ -1979,6 +2466,7 @@ struct hash<linalg::mat<T, M, 4>> {
     return h(v.x) ^ (h(v.y) << M) ^ (h(v.z) << (M * 2)) ^ (h(v.w) << (M * 3));
   }
 };
+/** @} */
 }  // namespace std
 
 // Definitions of functions too long to be defined inline
@@ -2061,6 +2549,25 @@ constexpr T linalg::determinant(const mat<T, 4, 4> &a) {
 }
 
 template <class T>
+linalg::vec<T, 4> linalg::rotation_quat(const vec<T, 3> &orig,
+                                        const vec<T, 3> &dest) {
+  T cosTheta = dot(orig, dest);
+  if (cosTheta >= 1 - std::numeric_limits<T>::epsilon()) {
+    return {0, 0, 0, 1};
+  }
+  if (cosTheta < -1 + std::numeric_limits<T>::epsilon()) {
+    vec<T, 3> axis = cross(vec<T, 3>(0, 0, 1), orig);
+    if (length2(axis) < std::numeric_limits<T>::epsilon())
+      axis = cross(vec<T, 3>(1, 0, 0), orig);
+    return rotation_quat(normalize(axis),
+                         3.14159265358979323846264338327950288);
+  }
+  vec<T, 3> axis = cross(orig, dest);
+  T s = std::sqrt((1 + cosTheta) * 2);
+  return {axis * (1 / s), s * 0.5};
+}
+
+template <class T>
 linalg::vec<T, 4> linalg::rotation_quat(const mat<T, 3, 3> &m) {
   const vec<T, 4> q{m.x.x - m.y.y - m.z.z, m.y.y - m.x.x - m.z.z,
                     m.z.z - m.x.x - m.y.y, m.x.x + m.y.y + m.z.z},
@@ -2091,5 +2598,4 @@ linalg::mat<T, 4, 4> linalg::frustum_matrix(T x0, T x1, T y0, T y1, T n, T f,
            s * (f + o) / (f - n), s},
           {0, 0, -(n + o) * f / (f - n), 0}};
 }
-
 #endif

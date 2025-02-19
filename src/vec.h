@@ -21,14 +21,11 @@
 #endif
 #include <vector>
 
-#include "manifold/parallel.h"
+#include "./parallel.h"
 #include "manifold/vec_view.h"
 
 namespace manifold {
 
-/** @addtogroup Private
- *  @{
- */
 template <typename T>
 class Vec;
 
@@ -219,5 +216,4 @@ class Vec : public VecView<T> {
 
   static_assert(std::is_trivially_destructible<T>::value);
 };
-/** @} */
 }  // namespace manifold

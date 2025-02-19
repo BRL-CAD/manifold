@@ -14,15 +14,21 @@
 
 #pragma once
 #include <limits>
-#include <stdexcept>
 #include <vector>
+
+#ifdef MANIFOLD_DEBUG
+#include <chrono>
+#endif
 
 #include "manifold/linalg.h"
 
 namespace manifold {
-/** @defgroup Math data structure definitions
- *  @brief Abstract away from linalg.
- *  In the future the underlying data type can change.
+/** @addtogroup Math
+ * @ingroup Core
+ * @brief Simple math operations.
+ * */
+
+/** @addtogroup LinAlg
  *  @{
  */
 namespace la = linalg;
@@ -42,22 +48,43 @@ using ivec2 = la::vec<int, 2>;
 using ivec3 = la::vec<int, 3>;
 using ivec4 = la::vec<int, 4>;
 using quat = la::vec<double, 4>;
-///@}
+/** @} */
+
+/** @addtogroup Scalar
+ * @ingroup Math
+ *  @brief Simple scalar operations.
+ *  @{
+ */
 
 constexpr double kPi = 3.14159265358979323846264338327950288;
 constexpr double kTwoPi = 6.28318530717958647692528676655900576;
 constexpr double kHalfPi = 1.57079632679489661923132169163975144;
 
+/**
+ * Convert degrees to radians.
+ *
+ * @param a Angle in degrees.
+ */
 constexpr double radians(double a) { return a * kPi / 180; }
+
+/**
+ * Convert radians to degrees.
+ *
+ * @param a Angle in radians.
+ */
 constexpr double degrees(double a) { return a * 180 / kPi; }
 
+/**
+ * Performs smooth Hermite interpolation between 0 and 1 when edge0 < x < edge1.
+ *
+ * @param edge0 Specifies the value of the lower edge of the Hermite function.
+ * @param edge1 Specifies the value of the upper edge of the Hermite function.
+ * @param a Specifies the source value for interpolation.
+ */
 constexpr double smoothstep(double edge0, double edge1, double a) {
   const double x = la::clamp((a - edge0) / (edge1 - edge0), 0, 1);
   return x * x * (3 - 2 * x);
 }
-
-constexpr mat3x4 Identity3x4() { return mat3x4(mat3(la::identity), vec3(0.0)); }
-constexpr mat2x3 Identity2x3() { return mat2x3(mat2(la::identity), vec2(0.0)); }
 
 /**
  * Sine function where multiples of 90 degrees come out exact.
@@ -88,24 +115,31 @@ inline double sind(double x) {
  * @param x Angle in degrees.
  */
 inline double cosd(double x) { return sind(x + 90.0); }
+/** @} */
+
+/** @addtogroup Structs
+ * @ingroup Core
+ * @brief Miscellaneous data structures for interfacing with this library.
+ *  @{
+ */
 
 /**
- * Single polygon contour, wound CCW. First and last point are implicitly
+ * @brief Single polygon contour, wound CCW. First and last point are implicitly
  * connected. Should ensure all input is
  * [&epsilon;-valid](https://github.com/elalish/manifold/wiki/Manifold-Library#definition-of-%CE%B5-valid).
  */
 using SimplePolygon = std::vector<vec2>;
 
 /**
- * Set of polygons with holes. Order of contours is arbitrary. Can contain any
- * depth of nested holes and any number of separate polygons. Should ensure all
- * input is
+ * @brief Set of polygons with holes. Order of contours is arbitrary. Can
+ * contain any depth of nested holes and any number of separate polygons. Should
+ * ensure all input is
  * [&epsilon;-valid](https://github.com/elalish/manifold/wiki/Manifold-Library#definition-of-%CE%B5-valid).
  */
 using Polygons = std::vector<SimplePolygon>;
 
 /**
- * Defines which edges to sharpen and how much for the Manifold.Smooth()
+ * @brief Defines which edges to sharpen and how much for the Manifold.Smooth()
  * constructor.
  */
 struct Smoothness {
@@ -118,12 +152,8 @@ struct Smoothness {
 };
 
 /**
- * Geometric properties of the manifold, created with Manifold.GetProperties().
+ * @brief Axis-aligned 3D box, primarily for bounding.
  */
-struct Properties {
-  double surfaceArea, volume;
-};
-
 struct Box {
   vec3 min = vec3(std::numeric_limits<double>::infinity());
   vec3 max = vec3(-std::numeric_limits<double>::infinity());
@@ -272,7 +302,7 @@ struct Box {
 };
 
 /**
- * Axis-aligned rectangular bounds.
+ * @brief Axis-aligned 2D box, primarily for bounding.
  */
 struct Rect {
   vec2 min = vec2(std::numeric_limits<double>::infinity());
@@ -435,14 +465,10 @@ struct Rect {
   }
   ///@}
 };
-/** @} */
-
-/** @addtogroup Core
- *  @{
- */
 
 /**
- * Boolean operation type: Add (Union), Subtract (Difference), and Intersect.
+ * @brief Boolean operation type: Add (Union), Subtract (Difference), and
+ * Intersect.
  */
 enum class OpType { Add, Subtract, Intersect };
 
@@ -450,8 +476,10 @@ constexpr int DEFAULT_SEGMENTS = 0;
 constexpr double DEFAULT_ANGLE = 10.0;
 constexpr double DEFAULT_LENGTH = 1.0;
 /**
- * These static properties control how circular shapes are quantized by
- * default on construction. If circularSegments is specified, it takes
+ * @brief These static properties control how circular shapes are quantized by
+ * default on construction.
+ *
+ * If circularSegments is specified, it takes
  * precedence. If it is zero, then instead the minimum is used of the segments
  * calculated based on edge length and angle, rounded up to the nearest
  * multiple of four. To get numbers not divisible by four, circularSegments
@@ -536,26 +564,13 @@ class Quality {
 };
 /** @} */
 
-/** @defgroup Exceptions
- *  @brief Custom Exceptions
- *
- *  Exceptions are only thrown if the MANIFOLD_EXCEPTIONS flag is set.
+/** @addtogroup Debug
+ * @ingroup Optional
  * @{
  */
-struct userErr : public virtual std::runtime_error {
-  using std::runtime_error::runtime_error;
-};
-struct topologyErr : public virtual std::runtime_error {
-  using std::runtime_error::runtime_error;
-};
-struct geometryErr : public virtual std::runtime_error {
-  using std::runtime_error::runtime_error;
-};
-using logicErr = std::logic_error;
-/** @} */
 
 /**
- * Global parameters that control debugging output. Only has an
+ * @brief Global parameters that control debugging output. Only has an
  * effect when compiled with the MANIFOLD_DEBUG flag.
  */
 struct ExecutionParams {
@@ -571,10 +586,65 @@ struct ExecutionParams {
   /// Suppresses printed errors regarding CW triangles. Has no effect if
   /// processOverlaps is true.
   bool suppressErrors = false;
-  /// Deterministic outputs. Will disable some parallel optimizations.
-  bool deterministic = false;
   /// Perform optional but recommended triangle cleanups in SimplifyTopology()
   bool cleanupTriangles = true;
 };
+/** @} */
 
+#ifdef MANIFOLD_DEBUG
+inline std::ostream& operator<<(std::ostream& stream, const Box& box) {
+  return stream << "min: " << box.min << ", "
+                << "max: " << box.max;
+}
+
+inline std::ostream& operator<<(std::ostream& stream, const Rect& box) {
+  return stream << "min: " << box.min << ", "
+                << "max: " << box.max;
+}
+
+/**
+ * Print the contents of this vector to standard output. Only exists if compiled
+ * with MANIFOLD_DEBUG flag.
+ */
+template <typename T>
+void Dump(const std::vector<T>& vec) {
+  std::cout << "Vec = " << std::endl;
+  for (size_t i = 0; i < vec.size(); ++i) {
+    std::cout << i << ", " << vec[i] << ", " << std::endl;
+  }
+  std::cout << std::endl;
+}
+
+template <typename T>
+void Diff(const std::vector<T>& a, const std::vector<T>& b) {
+  std::cout << "Diff = " << std::endl;
+  if (a.size() != b.size()) {
+    std::cout << "a and b must have the same length, aborting Diff"
+              << std::endl;
+    return;
+  }
+  for (size_t i = 0; i < a.size(); ++i) {
+    if (a[i] != b[i])
+      std::cout << i << ": " << a[i] << ", " << b[i] << std::endl;
+  }
+  std::cout << std::endl;
+}
+
+struct Timer {
+  std::chrono::high_resolution_clock::time_point start, end;
+
+  void Start() { start = std::chrono::high_resolution_clock::now(); }
+
+  void Stop() { end = std::chrono::high_resolution_clock::now(); }
+
+  float Elapsed() {
+    return std::chrono::duration_cast<std::chrono::milliseconds>(end - start)
+        .count();
+  }
+  void Print(std::string message) {
+    std::cout << "----------- " << std::round(Elapsed()) << " ms for "
+              << message << std::endl;
+  }
+};
+#endif
 }  // namespace manifold

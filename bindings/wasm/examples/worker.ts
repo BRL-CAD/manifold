@@ -74,8 +74,9 @@ const manifoldMemberFunctions = [
   'smoothOut',
   'refine',
   'refineToLength',
-  'refineToPrecision',
+  'refineToTolerance',
   'setProperties',
+  'setTolerance',
   'asOriginal',
   'trimByPlane',
   'split',
@@ -185,6 +186,7 @@ let timesAccessor: Accessor;
 let weightsAccessor: Accessor;
 let weightsSampler: AnimationSampler;
 let hasAnimation: boolean;
+let t0 = 0;
 
 export function cleanup() {
   for (const obj of memoryRegistry) {
@@ -522,7 +524,7 @@ function addMesh(
   }
   log(`Bounding Box: X = ${size[0].toLocaleString()} mm, Y = ${
       size[1].toLocaleString()} mm, Z = ${size[2].toLocaleString()} mm`);
-  const volume = Math.round(manifold.getProperties().volume / 10);
+  const volume = Math.round(manifold.volume() / 10);
   log(`Genus: ${manifold.genus().toLocaleString()}, Volume: ${
       (volume / 100).toLocaleString()} cm^3`);
 
@@ -618,7 +620,8 @@ function createNodeFromCache(
     } else {
       const cachedNode = cachedNodes.get(backupMaterial);
       if (cachedNode == null) {
-        const [oldBackupMaterial, oldNode] = cachedNodes.entries().next().value;
+        const [oldBackupMaterial, oldNode] =
+            cachedNodes.entries().next().value!;
         cloneNodeNewMaterial(
             doc, node, oldNode, getCachedMaterial(doc, backupMaterial),
             getCachedMaterial(doc, oldBackupMaterial));
@@ -734,6 +737,10 @@ async function exportModels(defaults: GlobalDefaults, manifold?: Manifold) {
     to3mf.items.push({objectID: `${object2globalID.get(manifold)}`});
   }
 
+  const t1 = performance.now();
+  console.log(`Manifold took ${
+      (Math.round((t1 - t0) / 10) / 100).toLocaleString()} seconds`);
+
   if (!hasAnimation) {
     timesAccessor.dispose();
     weightsAccessor.dispose();
@@ -756,6 +763,10 @@ async function exportModels(defaults: GlobalDefaults, manifold?: Manifold) {
   const blob3MF = new Blob(
       [zipFile],
       {type: 'application/vnd.ms-package.3dmanufacturing-3dmodel+xml'});
+
+  const t2 = performance.now();
+  console.log(`Exporting GLB & 3MF took ${
+      (Math.round((t2 - t1) / 10) / 100).toLocaleString()} seconds`);
 
   return ({
     glbURL: URL.createObjectURL(blobGLB),
@@ -784,6 +795,7 @@ function evaluateCADToManifold(code: string) {
 }
 
 export async function evaluateCADToModel(code: string) {
+  t0 = performance.now();
   const {globalDefaults, manifold} = evaluateCADToManifold(code);
   return await exportModels(globalDefaults, manifold);
 }

@@ -17,6 +17,10 @@
 #include "manifold/polygon.h"
 #include "test.h"
 
+#if (MANIFOLD_PAR == 1)
+#include <oneapi/tbb/parallel_for.h>
+#endif
+
 // we need to call some tracy API to establish the connection
 #if __has_include(<tracy/Tracy.hpp>)
 #include <tracy/Tracy.hpp>
@@ -34,8 +38,10 @@ void print_usage() {
   printf("manifold_test specific options:\n");
   printf("  -h: Print this message\n");
   printf("  -e: Export GLB models of samples\n");
+  printf("  -c: Enable intermediate checks (needs MANIFOLD_DEBUG)\n");
   printf(
-      "  -v: Enable verbose output (only works if compiled with MANIFOLD_DEBUG "
+      "  -v: Enable verbose output and intermediate checks (only works if "
+      "compiled with MANIFOLD_DEBUG "
       "flag)\n");
 }
 
@@ -44,6 +50,23 @@ int main(int argc, char** argv) {
 
   const char* name = "test setup";
   FrameMarkStart(name);
+
+  // warmup tbb for emscripten, according to
+  // https://github.com/oneapi-src/oneTBB/blob/master/WASM_Support.md#limitations
+#if defined(__EMSCRIPTEN__) && (MANIFOLD_PAR == 1)
+  int num_threads = tbb::this_task_arena::max_concurrency();
+  std::atomic<int> barrier{num_threads};
+  tbb::parallel_for(
+      0, num_threads,
+      [&barrier](int) {
+        barrier--;
+        while (barrier > 0) {
+          // Send browser thread to event loop
+          std::this_thread::yield();
+        }
+      },
+      tbb::static_partitioner{});
+#endif
 
   for (int i = 1; i < argc; i++) {
     if (argv[i][0] != '-') {
@@ -66,6 +89,9 @@ int main(int argc, char** argv) {
       case 'v':
         options.params.verbose = true;
         manifold::ManifoldParams().verbose = true;
+        manifold::ManifoldParams().intermediateChecks = true;
+        break;
+      case 'c':
         manifold::ManifoldParams().intermediateChecks = true;
         break;
       default:
@@ -125,6 +151,7 @@ MeshGL Csaszar() {
                       0, 5, 3,  //
                       0, 3, 2,  //
                       2, 4, 5};
+  csaszar.runOriginalID = {Manifold::ReserveIDs(1)};
   return csaszar;
 }
 
@@ -198,39 +225,16 @@ MeshGL CubeSTL() {
   return cube;
 }
 
-MeshGL WithIndexColors(const MeshGL& in) {
-  MeshGL out(in);
-  out.runIndex.clear();
-  out.runTransform.clear();
-  out.faceID.clear();
-  out.runOriginalID = {Manifold::ReserveIDs(1)};
-  const int numVert = out.NumVert();
-  out.numProp = 6;
-  out.vertProperties.resize(6 * numVert);
-  for (int i = 0; i < numVert; ++i) {
-    for (int j : {0, 1, 2})
-      out.vertProperties[6 * i + j] = in.vertProperties[3 * i + j];
-    // vertex colors
-    double a;
-    out.vertProperties[6 * i + 3] = powf(modf(i * sqrt(2.0), &a), 2.2);
-    out.vertProperties[6 * i + 4] = powf(modf(i * sqrt(3.0), &a), 2.2);
-    out.vertProperties[6 * i + 5] = powf(modf(i * sqrt(5.0), &a), 2.2);
-  }
-  return out;
-}
-
-MeshGL WithPositionColors(const Manifold& in) {
+Manifold WithPositionColors(const Manifold& in) {
   const Box bbox = in.BoundingBox();
   const vec3 size = bbox.Size();
 
-  Manifold out = in.SetProperties(
+  return in.SetProperties(
       3, [bbox, size](double* prop, vec3 pos, const double* oldProp) {
         for (int i : {0, 1, 2}) {
           prop[i] = (pos[i] - bbox.min[i]) / size[i];
         }
       });
-
-  return out.GetMeshGL();
 }
 
 MeshGL CubeUV() {
@@ -319,13 +323,14 @@ void Identical(const MeshGL& mesh1, const MeshGL& mesh2) {
 void RelatedGL(const Manifold& out, const std::vector<MeshGL>& originals,
                bool checkNormals, bool updateNormals) {
   ASSERT_FALSE(out.IsEmpty());
-  const ivec3 normalIdx = updateNormals ? ivec3(3, 4, 5) : ivec3(0);
+  const int normalIdx = updateNormals ? 0 : -1;
   MeshGL output = out.GetMeshGL(normalIdx);
+
   for (size_t run = 0; run < output.runOriginalID.size(); ++run) {
     const float* m = output.runTransform.data() + 12 * run;
     const mat3x4 transform =
         output.runTransform.empty()
-            ? Identity3x4()
+            ? la::identity
             : mat3x4({m[0], m[1], m[2]}, {m[3], m[4], m[5]}, {m[6], m[7], m[8]},
                      {m[9], m[10], m[11]});
     size_t i = 0;
@@ -335,6 +340,9 @@ void RelatedGL(const Manifold& out, const std::vector<MeshGL>& originals,
     }
     ASSERT_LT(i, originals.size());
     const MeshGL& inMesh = originals[i];
+    const float tolerance =
+        3 * std::max(static_cast<float>(out.GetTolerance()), inMesh.tolerance);
+
     for (uint32_t tri = output.runIndex[run] / 3;
          tri < output.runIndex[run + 1] / 3; ++tri) {
       if (!output.faceID.empty()) {
@@ -372,7 +380,7 @@ void RelatedGL(const Manifold& out, const std::vector<MeshGL>& originals,
         vec3 edges[3];
         for (int k : {0, 1, 2}) edges[k] = inTriPos[k] - outTriPos[j];
         const double volume = la::dot(edges[0], la::cross(edges[1], edges[2]));
-        ASSERT_LE(volume, area * output.precision);
+        ASSERT_LE(volume, area * tolerance);
 
         if (checkNormals) {
           vec3 normal;
@@ -395,7 +403,7 @@ void RelatedGL(const Manifold& out, const std::vector<MeshGL>& originals,
             const double volumeP =
                 la::dot(edgesP[0], la::cross(edgesP[1], edgesP[2]));
 
-            ASSERT_LE(volumeP, area * output.precision);
+            ASSERT_LE(volumeP, area * tolerance);
           }
         }
       }
@@ -430,9 +438,12 @@ void CheckStrictly(const Manifold& manifold) {
   EXPECT_EQ(manifold.NumDegenerateTris(), 0);
 }
 
-void CheckGL(const Manifold& manifold) {
+void CheckGL(const Manifold& manifold, bool noMerge) {
   ASSERT_FALSE(manifold.IsEmpty());
   const MeshGL meshGL = manifold.GetMeshGL();
+  if (noMerge) {
+    EXPECT_EQ(manifold.NumVert(), meshGL.NumVert());
+  }
   EXPECT_EQ(meshGL.mergeFromVert.size(), meshGL.mergeToVert.size());
   EXPECT_EQ(meshGL.mergeFromVert.size(), meshGL.NumVert() - manifold.NumVert());
   EXPECT_EQ(meshGL.runIndex.size(), meshGL.runOriginalID.size() + 1);
@@ -446,9 +457,9 @@ void CheckGL(const Manifold& manifold) {
 }
 
 #ifdef MANIFOLD_EXPORT
-Manifold ReadMesh(const std::string& filename) {
+MeshGL ReadMesh(const std::string& filename) {
   std::string file = __FILE__;
   std::string dir = file.substr(0, file.rfind('/'));
-  return Manifold(ImportMesh(dir + "/models/" + filename));
+  return ImportMesh(dir + "/models/" + filename);
 }
 #endif

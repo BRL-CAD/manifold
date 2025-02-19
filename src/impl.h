@@ -28,7 +28,7 @@ namespace manifold {
 struct Manifold::Impl {
   struct Relation {
     int originalID = -1;
-    mat3x4 transform = Identity3x4();
+    mat3x4 transform = la::identity;
     bool backSide = false;
   };
   struct MeshRelationD {
@@ -45,7 +45,8 @@ struct Manifold::Impl {
   };
 
   Box bBox_;
-  double precision_ = -1;
+  double epsilon_ = -1;
+  double tolerance_ = -1;
   Error status_ = Error::NoError;
   Vec<vec3> vertPos_;
   Vec<Halfedge> halfedge_;
@@ -60,7 +61,7 @@ struct Manifold::Impl {
 
   Impl() {}
   enum class Shape { Tetrahedron, Cube, Octahedron };
-  Impl(Shape, const mat3x4 = Identity3x4());
+  Impl(Shape, const mat3x4 = la::identity);
 
   template <typename Precision, typename I>
   Impl(const MeshGLP<Precision, I>& meshGL) {
@@ -110,6 +111,7 @@ struct Manifold::Impl {
     const auto numProp = meshGL.numProp - 3;
     meshRelation_.numProp = numProp;
     meshRelation_.properties.resize(meshGL.NumVert() * numProp);
+    tolerance_ = meshGL.tolerance;
     // This will have unreferenced duplicate positions that will be removed by
     // Impl::RemoveUnreferencedVerts().
     vertPos_.resize(meshGL.NumVert());
@@ -147,6 +149,7 @@ struct Manifold::Impl {
           ref.meshID = meshID;
           ref.originalID = originalID;
           ref.tri = meshGL.faceID.empty() ? tri : meshGL.faceID[tri];
+          ref.faceID = tri;
         }
 
         if (meshGL.runTransform.empty()) {
@@ -195,11 +198,7 @@ struct Manifold::Impl {
     }
 
     CalculateBBox();
-    if (!IsFinite()) {
-      MarkFailure(Error::NonFiniteVertex);
-      return;
-    }
-    SetPrecision(meshGL.precision);
+    SetEpsilon(-1, std::is_same<Precision, float>::value);
 
     SplitPinchedVerts();
 
@@ -209,8 +208,16 @@ struct Manifold::Impl {
       InitializeOriginal();
     }
 
+    CreateFaces();
+
     SimplifyTopology();
+    RemoveUnreferencedVerts();
     Finish();
+
+    if (!IsFinite()) {
+      MarkFailure(Error::NonFiniteVertex);
+      return;
+    }
 
     // A Manifold created from an input mesh is never an original - the input is
     // the original.
@@ -240,9 +247,9 @@ struct Manifold::Impl {
     } while (current != halfedge);
   }
 
-  void CreateFaces(const std::vector<double>& propertyTolerance = {});
+  void CreateFaces();
   void RemoveUnreferencedVerts();
-  void InitializeOriginal();
+  void InitializeOriginal(bool keepFaceID = false);
   void CreateHalfedges(const Vec<ivec3>& triVerts);
   void CalculateNormals();
   void IncrementMeshIDs();
@@ -266,20 +273,22 @@ struct Manifold::Impl {
                           : meshRelation_.properties.size() / NumProp();
   }
 
-  // properties.cu
-  Properties GetProperties() const;
+  // properties.cpp
+  enum class Property { Volume, SurfaceArea };
+  double GetProperty(Property prop) const;
   void CalculateCurvature(int gaussianIdx, int meanIdx);
   void CalculateBBox();
   bool IsFinite() const;
   bool IsIndexInBounds(VecView<const ivec3> triVerts) const;
-  void SetPrecision(double minPrecision = -1);
+  void SetEpsilon(double minEpsilon = -1, bool useSingle = false);
   bool IsManifold() const;
   bool Is2Manifold() const;
+  bool IsSelfIntersecting() const;
   bool MatchesTriNormals() const;
   int NumDegenerateTris() const;
   double MinGap(const Impl& other, double searchLength) const;
 
-  // sort.cu
+  // sort.cpp
   void Finish();
   void SortVerts();
   void ReindexVerts(const Vec<int>& vertNew2Old, size_t numOldVert);
@@ -289,7 +298,7 @@ struct Manifold::Impl {
   void GatherFaces(const Vec<int>& faceNew2Old);
   void GatherFaces(const Impl& old, const Vec<int>& faceNew2Old);
 
-  // face_op.cu
+  // face_op.cpp
   void Face2Tri(const Vec<int>& faceEdge, const Vec<TriRef>& halfedgeRef);
   PolygonsIdx Face2Polygons(VecView<Halfedge>::IterC start,
                             VecView<Halfedge>::IterC end,
@@ -297,7 +306,7 @@ struct Manifold::Impl {
   Polygons Slice(double height) const;
   Polygons Project() const;
 
-  // edge_op.cu
+  // edge_op.cpp
   void CleanupTopology();
   void SimplifyTopology();
   void DedupeEdge(int edge);
@@ -343,4 +352,9 @@ struct Manifold::Impl {
   // quickhull.cpp
   void Hull(VecView<vec3> vertPos);
 };
+
+#ifdef MANIFOLD_DEBUG
+extern std::mutex dump_lock;
+std::ostream& operator<<(std::ostream& stream, const Manifold::Impl& impl);
+#endif
 }  // namespace manifold

@@ -83,7 +83,7 @@ MeshGL MeshJS2GL(const val& mesh) {
   return out;
 }
 
-val GetMeshJS(const Manifold& manifold, const ivec3& normalIdx) {
+val GetMeshJS(const Manifold& manifold, int normalIdx) {
   MeshGL mesh = manifold.GetMeshGL(normalIdx);
   return MeshGL2JS(mesh);
 }
@@ -206,9 +206,9 @@ Manifold SetProperties(Manifold& manifold, int numProp, uintptr_t funcPtr) {
 }
 
 Manifold LevelSet(uintptr_t funcPtr, Box bounds, double edgeLength,
-                  double level, double precision) {
+                  double level, double tolerance) {
   double (*f)(const vec3&) = reinterpret_cast<double (*)(const vec3&)>(funcPtr);
-  return Manifold::LevelSet(f, bounds, edgeLength, level, precision);
+  return Manifold::LevelSet(f, bounds, edgeLength, level, tolerance, false);
 }
 
 std::vector<Manifold> Split(Manifold& a, Manifold& b) {

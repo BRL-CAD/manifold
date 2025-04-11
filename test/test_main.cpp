@@ -12,10 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 #include <algorithm>
+#include <filesystem>
 
 #include "manifold/manifold.h"
-#include "manifold/polygon.h"
 #include "test.h"
+
+#if defined(MANIFOLD_EXPORT) || defined(MANIFOLD_DEBUG)
+#include <fstream>
+#endif
 
 #if (MANIFOLD_PAR == 1)
 #include <oneapi/tbb/parallel_for.h>
@@ -38,11 +42,13 @@ void print_usage() {
   printf("manifold_test specific options:\n");
   printf("  -h: Print this message\n");
   printf("  -e: Export GLB models of samples\n");
-  printf("  -c: Enable intermediate checks (needs MANIFOLD_DEBUG)\n");
+  printf("  -c: Enable self-intersection checks (needs MANIFOLD_DEBUG)\n");
   printf(
-      "  -v: Enable verbose output and intermediate checks (only works if "
-      "compiled with MANIFOLD_DEBUG "
+      "  -v: Enable verbose output (only works if compiled with MANIFOLD_DEBUG "
       "flag)\n");
+  printf(
+      "  -vv: Enable extra verbose output for triangulator (only works if "
+      "compiled with MANIFOLD_DEBUG flag)\n");
 }
 
 int main(int argc, char** argv) {
@@ -87,12 +93,13 @@ int main(int argc, char** argv) {
         options.exportModels = true;
         break;
       case 'v':
-        options.params.verbose = true;
-        manifold::ManifoldParams().verbose = true;
-        manifold::ManifoldParams().intermediateChecks = true;
+        manifold::ManifoldParams().verbose = 1;
+        if (argv[i][2] == 'v') {
+          manifold::ManifoldParams().verbose = 2;
+        }
         break;
       case 'c':
-        manifold::ManifoldParams().intermediateChecks = true;
+        manifold::ManifoldParams().selfIntersectionChecks = true;
         break;
       default:
         fprintf(stderr, "Unknown option: %s\n", argv[i]);
@@ -101,8 +108,8 @@ int main(int argc, char** argv) {
     }
   }
 
-  manifold::PolygonParams().intermediateChecks = true;
-  manifold::PolygonParams().processOverlaps = false;
+  manifold::ManifoldParams().intermediateChecks = true;
+  manifold::ManifoldParams().processOverlaps = false;
 
   FrameMarkEnd(name);
 
@@ -456,10 +463,53 @@ void CheckGL(const Manifold& manifold, bool noMerge) {
   CheckFinite(meshGL);
 }
 
+void CheckGLEquiv(const MeshGL& mgl1, const MeshGL& mgl2) {
+  bool verbose = true;
+  EXPECT_EQ(mgl1.NumVert(), mgl2.NumVert());
+  EXPECT_EQ(mgl1.NumTri(), mgl2.NumTri());
+  EXPECT_EQ(mgl1.numProp, mgl2.numProp);
+
+  int ntri = mgl1.NumTri();
+  for (int t = 0; t < ntri; t++) {
+    for (int i = 0; i < 3; i++) {
+      EXPECT_EQ(mgl1.triVerts[3 * t + i], mgl2.triVerts[3 * t + i]);
+      // early return to avoid spam
+      if (mgl1.triVerts[3 * t + i] != mgl2.triVerts[3 * t + i]) return;
+    }
+  }
+
+  int nprop = mgl1.numProp;
+  int nvert = mgl1.NumVert();
+  for (int v = 0; v < nvert; v++) {
+    for (int p = 0; p < nprop; p++) {
+      EXPECT_EQ(mgl1.vertProperties[v * nprop + p],
+                mgl2.vertProperties[v * nprop + p]);
+      // early return to avoid spam
+      if (mgl1.vertProperties[v * nprop + p] !=
+          mgl2.vertProperties[v * nprop + p])
+        return;
+    }
+  }
+}
+
 #ifdef MANIFOLD_EXPORT
 MeshGL ReadMesh(const std::string& filename) {
   std::string file = __FILE__;
   std::string dir = file.substr(0, file.rfind('/'));
   return ImportMesh(dir + "/models/" + filename);
+}
+#endif
+
+#ifdef MANIFOLD_DEBUG
+Manifold ReadTestOBJ(const std::string& filename) {
+  std::filesystem::path file(__FILE__);
+  std::filesystem::path obj = file.parent_path();
+  obj.append("models");
+  obj.append(filename);
+  std::ifstream f;
+  f.open(obj);
+  Manifold a = Manifold::ReadOBJ(f);
+  f.close();
+  return a;
 }
 #endif

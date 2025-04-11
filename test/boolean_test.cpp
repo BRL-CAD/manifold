@@ -138,6 +138,14 @@ TEST(Boolean, Cubes) {
 #endif
 }
 
+TEST(Boolean, Simplify) {
+  Manifold cube = Manifold::Cube().Refine(10);
+  Manifold result = cube + cube.Translate({1, 0, 0});
+  EXPECT_EQ(result.NumTri(), 1926);
+  result = result.Simplify();
+  EXPECT_EQ(result.NumTri(), 20);
+}
+
 TEST(Boolean, NoRetainedVerts) {
   Manifold cube = Manifold::Cube(vec3(1), true);
   Manifold oct = Manifold::Sphere(1, 4);
@@ -265,6 +273,13 @@ TEST(Boolean, MultiCoplanar) {
   EXPECT_EQ(out.Genus(), -1);
   EXPECT_NEAR(out.Volume(), 0.18, 1e-5);
   EXPECT_NEAR(out.SurfaceArea(), 2.76, 1e-5);
+}
+
+TEST(Boolean, AlmostCoplanar) {
+  Manifold tet = Manifold::Tetrahedron();
+  Manifold result =
+      tet + tet.Rotate(0.001, -0.08472872823860228, 0.055910459615905288) + tet;
+  ExpectMeshes(result, {{20, 36}});
 }
 
 TEST(Boolean, FaceUnion) {
@@ -422,14 +437,13 @@ TEST(Boolean, Precision2) {
   EXPECT_FALSE((cube ^ cube2).IsEmpty());
 }
 
-TEST(Boolean, DISABLED_SimpleCubeRegression) {
-  ManifoldParams().intermediateChecks = true;
-  ManifoldParams().processOverlaps = false;
+TEST(Boolean, SimpleCubeRegression) {
+  const bool selfIntersectionChecks = ManifoldParams().selfIntersectionChecks;
+  ManifoldParams().selfIntersectionChecks = true;
   Manifold result =
       Manifold::Cube().Rotate(-0.10000000000000001, 0.10000000000000001, -1.) +
       Manifold::Cube() -
       Manifold::Cube().Rotate(-0.10000000000000001, -0.10000000000066571, -1.);
   EXPECT_EQ(result.Status(), Manifold::Error::NoError);
-  ManifoldParams().intermediateChecks = false;
-  ManifoldParams().processOverlaps = true;
+  ManifoldParams().selfIntersectionChecks = selfIntersectionChecks;
 }

@@ -371,7 +371,7 @@ Vec<bool> Manifold::Impl::FlatFaces() const {
 // gets -1, and if there are more than one it gets -2.
 Vec<int> Manifold::Impl::VertFlatFace(const Vec<bool>& flatFaces) const {
   Vec<int> vertFlatFace(NumVert(), -1);
-  Vec<TriRef> vertRef(NumVert(), {-1, -1, -1});
+  Vec<TriRef> vertRef(NumVert(), {-1, -1, -1, -1});
   for (size_t tri = 0; tri < NumTri(); ++tri) {
     if (flatFaces[tri]) {
       for (const int j : {0, 1, 2}) {
@@ -550,7 +550,6 @@ void Manifold::Impl::SetNormals(int normalIdx, double minSharpAngle) {
               }
               const int vert = halfedge_[current].endVert;
               vec3 pos = vertPos_[vert];
-              const vec3 edgeVec = centerPos - pos;
               if (vertNumSharp[vert] < 2) {
                 // opposite vert has fixed normal
                 const vec3 normal = vertFlatFace[vert] >= 0
@@ -566,7 +565,7 @@ void Manifold::Impl::SetNormals(int normalIdx, double minSharpAngle) {
               return FaceEdge({current / 3, SafeNormalize(pos - centerPos)});
             },
             [this, &triIsFlatFace, &normals, &group, minSharpAngle](
-                int current, const FaceEdge& here, FaceEdge& next) {
+                int, const FaceEdge& here, FaceEdge& next) {
               const double dihedral = degrees(std::acos(
                   la::dot(faceNormal_[here.face], faceNormal_[next.face])));
               if (dihedral > minSharpAngle ||
@@ -770,7 +769,7 @@ void Manifold::Impl::CreateTangents(int normalIdx) {
   ZoneScoped;
   const int numVert = NumVert();
   const int numHalfedge = halfedge_.size();
-  halfedgeTangent_.resize(0);
+  halfedgeTangent_.clear();
   Vec<vec4> tangent(numHalfedge);
   Vec<bool> fixedHalfedge(numHalfedge, false);
 
@@ -854,7 +853,7 @@ void Manifold::Impl::CreateTangents(int normalIdx) {
 void Manifold::Impl::CreateTangents(std::vector<Smoothness> sharpenedEdges) {
   ZoneScoped;
   const int numHalfedge = halfedge_.size();
-  halfedgeTangent_.resize(0);
+  halfedgeTangent_.clear();
   Vec<vec4> tangent(numHalfedge);
   Vec<bool> fixedHalfedge(numHalfedge, false);
 
@@ -994,7 +993,7 @@ void Manifold::Impl::Refine(std::function<int(vec3, vec4, vec4)> edgeDivisions,
                InterpTri({vertPos_, vertBary, &old}));
   }
 
-  halfedgeTangent_.resize(0);
+  halfedgeTangent_.clear();
   Finish();
   CreateFaces();
   meshRelation_.originalID = -1;

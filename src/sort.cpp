@@ -180,17 +180,19 @@ bool MergeMeshGLP(MeshGLP<Precision, I>& mesh) {
   Permute(vertMorton, vertNew2Old);
   Permute(vertBox, vertNew2Old);
   Permute(openVerts, vertNew2Old);
-  Collider collider(vertBox, vertMorton);
-  SparseIndices toMerge = collider.Collisions<true>(vertBox.cview());
 
+  Collider collider(vertBox, vertMorton);
   UnionFind<> uf(numVert);
+
+  auto f = [&uf, &openVerts](int a, int b) {
+    return uf.unionXY(openVerts[a], openVerts[b]);
+  };
+  auto recorder = MakeSimpleRecorder(f);
+  collider.Collisions<true>(vertBox.cview(), recorder, false);
+
   for (size_t i = 0; i < mesh.mergeFromVert.size(); ++i) {
     uf.unionXY(static_cast<int>(mesh.mergeFromVert[i]),
                static_cast<int>(mesh.mergeToVert[i]));
-  }
-  for (size_t i = 0; i < toMerge.size(); ++i) {
-    uf.unionXY(openVerts[toMerge.Get(i, false)],
-               openVerts[toMerge.Get(i, true)]);
   }
 
   mesh.mergeToVert.clear();
@@ -221,7 +223,7 @@ void Manifold::Impl::Finish() {
   SetEpsilon(epsilon_);
   if (!bBox_.IsFinite()) {
     // Decimated out of existence - early out.
-    MarkFailure(Error::NoError);
+    MakeEmpty(Error::NoError);
     return;
   }
 
@@ -350,7 +352,7 @@ void Manifold::Impl::CompactProps() {
   const int numVertsNew = propOld2New[numVerts];
   const int numProp = meshRelation_.numProp;
   auto& properties = meshRelation_.properties;
-  properties.resize(numProp * numVertsNew);
+  properties.resize_nofill(numProp * numVertsNew);
   for_each_n(
       policy, countAt(0), numVerts,
       [&properties, &oldProp, &propOld2New, &keep, &numProp](const int oldIdx) {
@@ -372,8 +374,9 @@ void Manifold::Impl::CompactProps() {
 void Manifold::Impl::GetFaceBoxMorton(Vec<Box>& faceBox,
                                       Vec<uint32_t>& faceMorton) const {
   ZoneScoped;
-  faceBox.resize(NumTri());
-  faceMorton.resize(NumTri());
+  // faceBox should be initialized
+  faceBox.resize(NumTri(), Box());
+  faceMorton.resize_nofill(NumTri());
   for_each_n(autoPolicy(NumTri(), 1e5), countAt(0), NumTri(),
              [this, &faceBox, &faceMorton](const int face) {
                // Removed tris are marked by all halfedges having pairedHalfedge
@@ -446,8 +449,9 @@ void Manifold::Impl::GatherFaces(const Vec<int>& faceNew2Old) {
   scatter(countAt(0_uz), countAt(numTri), faceNew2Old.begin(),
           faceOld2New.begin());
 
-  halfedge_.resize(3 * numTri);
-  if (oldHalfedgeTangent.size() != 0) halfedgeTangent_.resize(3 * numTri);
+  halfedge_.resize_nofill(3 * numTri);
+  if (oldHalfedgeTangent.size() != 0)
+    halfedgeTangent_.resize_nofill(3 * numTri);
   for_each_n(policy, countAt(0), numTri,
              ReindexFace({halfedge_, halfedgeTangent_, oldHalfedge,
                           oldHalfedgeTangent, faceNew2Old, faceOld2New}));
@@ -457,7 +461,7 @@ void Manifold::Impl::GatherFaces(const Impl& old, const Vec<int>& faceNew2Old) {
   ZoneScoped;
   const auto numTri = faceNew2Old.size();
 
-  meshRelation_.triRef.resize(numTri);
+  meshRelation_.triRef.resize_nofill(numTri);
   gather(faceNew2Old.begin(), faceNew2Old.end(),
          old.meshRelation_.triRef.begin(), meshRelation_.triRef.begin());
 
@@ -466,7 +470,7 @@ void Manifold::Impl::GatherFaces(const Impl& old, const Vec<int>& faceNew2Old) {
   }
 
   if (old.meshRelation_.triProperties.size() > 0) {
-    meshRelation_.triProperties.resize(numTri);
+    meshRelation_.triProperties.resize_nofill(numTri);
     gather(faceNew2Old.begin(), faceNew2Old.end(),
            old.meshRelation_.triProperties.begin(),
            meshRelation_.triProperties.begin());
@@ -475,7 +479,7 @@ void Manifold::Impl::GatherFaces(const Impl& old, const Vec<int>& faceNew2Old) {
   }
 
   if (old.faceNormal_.size() == old.NumTri()) {
-    faceNormal_.resize(numTri);
+    faceNormal_.resize_nofill(numTri);
     gather(faceNew2Old.begin(), faceNew2Old.end(), old.faceNormal_.begin(),
            faceNormal_.begin());
   }
@@ -484,8 +488,9 @@ void Manifold::Impl::GatherFaces(const Impl& old, const Vec<int>& faceNew2Old) {
   scatter(countAt(0_uz), countAt(numTri), faceNew2Old.begin(),
           faceOld2New.begin());
 
-  halfedge_.resize(3 * numTri);
-  if (old.halfedgeTangent_.size() != 0) halfedgeTangent_.resize(3 * numTri);
+  halfedge_.resize_nofill(3 * numTri);
+  if (old.halfedgeTangent_.size() != 0)
+    halfedgeTangent_.resize_nofill(3 * numTri);
   for_each_n(autoPolicy(numTri, 1e5), countAt(0), numTri,
              ReindexFace({halfedge_, halfedgeTangent_, old.halfedge_,
                           old.halfedgeTangent_, faceNew2Old, faceOld2New}));

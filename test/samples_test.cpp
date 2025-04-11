@@ -291,24 +291,38 @@ TEST(Samples, Sponge4) {
     ExportMesh("mengerSponge.glb", out, options);
   }
 #endif
+  Manifold sponge2 = MengerSponge(4);
+  std::pair<Manifold, Manifold> cutSponge2 = sponge2.SplitByPlane({1, 1, 1}, 0);
+  CheckGLEquiv(cutSponge.first.GetMeshGL(), cutSponge2.first.GetMeshGL());
 }
 #endif
 #endif
 
-TEST(Samples, DISABLED_CondensedMatter16) {
+TEST(Samples, CondensedMatter16) {
+  // FIXME: Triangulation can be invalid
+  bool old = ManifoldParams().processOverlaps;
+  ManifoldParams().processOverlaps = true;
   Manifold cm = CondensedMatter(16);
   CheckGL(cm);
+  Manifold cm2 = CondensedMatter(16);
+  CheckGLEquiv(cm.GetMeshGL(), cm2.GetMeshGL());
 #ifdef MANIFOLD_EXPORT
   if (options.exportModels)
     ExportMesh("condensedMatter16.glb", cm.GetMeshGL(), {});
 #endif
+  ManifoldParams().processOverlaps = old;
 }
 
+#ifndef __EMSCRIPTEN__
 TEST(Samples, CondensedMatter64) {
   Manifold cm = CondensedMatter(64);
   CheckGL(cm);
+
+  Manifold cm2 = CondensedMatter(64);
+  CheckGLEquiv(cm.GetMeshGL(), cm2.GetMeshGL());
 #ifdef MANIFOLD_EXPORT
   if (options.exportModels)
     ExportMesh("condensedMatter64.glb", cm.GetMeshGL(), {});
 #endif
 }
+#endif

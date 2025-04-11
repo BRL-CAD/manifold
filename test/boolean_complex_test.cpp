@@ -15,11 +15,8 @@
 #ifdef MANIFOLD_CROSS_SECTION
 #include "manifold/cross_section.h"
 #endif
-#include <fstream>
-#include <iostream>
 
 #include "manifold/manifold.h"
-#include "manifold/polygon.h"
 #include "test.h"
 
 using namespace manifold;
@@ -229,7 +226,7 @@ TEST(BooleanComplex, Subtract) {
 }
 
 TEST(BooleanComplex, Close) {
-  PolygonParams().processOverlaps = true;
+  ManifoldParams().processOverlaps = true;
 
   const double r = 10;
   Manifold a = Manifold::Sphere(r, 256);
@@ -246,7 +243,7 @@ TEST(BooleanComplex, Close) {
   if (options.exportModels) ExportMesh("close.glb", result.GetMeshGL(), {});
 #endif
 
-  PolygonParams().processOverlaps = false;
+  ManifoldParams().processOverlaps = false;
 }
 
 TEST(BooleanComplex, BooleanVolumes) {
@@ -291,7 +288,7 @@ TEST(BooleanComplex, Spiral) {
 
 #ifdef MANIFOLD_CROSS_SECTION
 TEST(BooleanComplex, Sweep) {
-  PolygonParams().processOverlaps = true;
+  ManifoldParams().processOverlaps = true;
 
   // generate the minimum equivalent positive angle
   auto minPosAngle = [](double angle) {
@@ -525,7 +522,7 @@ TEST(BooleanComplex, Sweep) {
   if (options.exportModels) ExportMesh("unionError.glb", shape.GetMeshGL(), {});
 #endif
 
-  PolygonParams().processOverlaps = false;
+  ManifoldParams().processOverlaps = false;
 }
 #endif
 
@@ -874,12 +871,12 @@ TEST(BooleanComplex, InterpolatedNormals) {
 
 #ifdef MANIFOLD_EXPORT
 TEST(BooleanComplex, SelfIntersect) {
-  manifold::PolygonParams().processOverlaps = true;
+  manifold::ManifoldParams().processOverlaps = true;
   Manifold m1 = ReadMesh("self_intersectA.glb");
   Manifold m2 = ReadMesh("self_intersectB.glb");
   Manifold res = m1 + m2;
   res.GetMeshGL();  // test crash
-  manifold::PolygonParams().processOverlaps = false;
+  manifold::ManifoldParams().processOverlaps = false;
 }
 
 TEST(BooleanComplex, GenericTwinBooleanTest7081) {
@@ -890,21 +887,21 @@ TEST(BooleanComplex, GenericTwinBooleanTest7081) {
 }
 
 TEST(BooleanComplex, GenericTwinBooleanTest7863) {
-  manifold::PolygonParams().processOverlaps = true;
+  manifold::ManifoldParams().processOverlaps = true;
   Manifold m1 = ReadMesh("Generic_Twin_7863.1.t0_left.glb");
   Manifold m2 = ReadMesh("Generic_Twin_7863.1.t0_right.glb");
   Manifold res = m1 + m2;  // Union
   res.GetMeshGL();         // test crash
-  manifold::PolygonParams().processOverlaps = false;
+  manifold::ManifoldParams().processOverlaps = false;
 }
 
 TEST(BooleanComplex, Havocglass8Bool) {
-  manifold::PolygonParams().processOverlaps = true;
+  manifold::ManifoldParams().processOverlaps = true;
   Manifold m1 = ReadMesh("Havocglass8_left.glb");
   Manifold m2 = ReadMesh("Havocglass8_right.glb");
   Manifold res = m1 + m2;  // Union
   res.GetMeshGL();         // test crash
-  manifold::PolygonParams().processOverlaps = false;
+  manifold::ManifoldParams().processOverlaps = false;
 }
 
 TEST(BooleanComplex, CraycloudBool) {
@@ -912,6 +909,8 @@ TEST(BooleanComplex, CraycloudBool) {
   Manifold m2 = ReadMesh("Cray_right.glb");
   Manifold res = m1 - m2;
   EXPECT_EQ(res.Status(), Manifold::Error::NoError);
+  EXPECT_FALSE(res.IsEmpty());
+  res = res.Simplify();
   EXPECT_TRUE(res.IsEmpty());
 }
 
@@ -922,14 +921,6 @@ TEST(BooleanComplex, HullMask) {
   MeshGL mesh = ret.GetMeshGL();
 }
 
-// Note - For the moment, the Status() checks are included in the loops to
-// (more or less) mimic the BRL-CAD behavior of checking the mesh for
-// unexpected output after each iteration.  Doing so is not ideal - it
-// *massively* slows the overall evaluation - but it also seems to be
-// triggering behavior that avoids a triangulation failure.
-//
-// Eventually, once other issues are resolved, the in-loop checks should be
-// removed in favor of the top level checks.
 TEST(BooleanComplex, SimpleOffset) {
   std::string file = __FILE__;
   std::string dir = file.substr(0, file.rfind('/'));
@@ -1012,48 +1003,29 @@ TEST(BooleanComplex, SimpleOffset) {
       tri_m.triVerts.insert(tri_m.triVerts.end(), faces[j]);
     manifold::Manifold right(tri_m);
     c += right;
-    // See above discussion
-    EXPECT_EQ(c.Status(), Manifold::Error::NoError);
   }
-  // See above discussion
   EXPECT_EQ(c.Status(), Manifold::Error::NoError);
 }
+#endif
 
+#ifdef MANIFOLD_DEBUG
 TEST(BooleanComplex, DISABLED_OffsetTriangulationFailure) {
-  const bool intermediateChecks = ManifoldParams().intermediateChecks;
-  ManifoldParams().intermediateChecks = true;
-  std::string file = __FILE__;
-  std::string dir = file.substr(0, file.rfind('/'));
-  Manifold a, b;
-  std::ifstream f;
-  f.open(dir + "/models/Offset1.obj");
-  a = Manifold::ImportMeshGL64(f);
-  f.close();
-  f.open(dir + "/models/Offset2.obj");
-  b = Manifold::ImportMeshGL64(f);
-  f.close();
+  const bool selfIntersectionChecks = ManifoldParams().selfIntersectionChecks;
+  ManifoldParams().selfIntersectionChecks = true;
+  Manifold a = ReadTestOBJ("Offset1.obj");
+  Manifold b = ReadTestOBJ("Offset2.obj");
   Manifold result = a + b;
   EXPECT_EQ(result.Status(), Manifold::Error::NoError);
-  ManifoldParams().intermediateChecks = intermediateChecks;
+  ManifoldParams().selfIntersectionChecks = selfIntersectionChecks;
 }
 
 TEST(BooleanComplex, DISABLED_OffsetSelfIntersect) {
-  const bool intermediateChecks = ManifoldParams().intermediateChecks;
-  ManifoldParams().intermediateChecks = true;
-  std::string file = __FILE__;
-  std::string dir = file.substr(0, file.rfind('/'));
-  Manifold a, b;
-  std::ifstream f;
-  f.open(dir + "/models/Offset3.obj");
-  a = Manifold::ImportMeshGL64(f);
-  f.close();
-  f.open(dir + "/models/Offset4.obj");
-  b = Manifold::ImportMeshGL64(f);
-  f.close();
-
+  const bool selfIntersectionChecks = ManifoldParams().selfIntersectionChecks;
+  ManifoldParams().selfIntersectionChecks = true;
+  Manifold a = ReadTestOBJ("Offset3.obj");
+  Manifold b = ReadTestOBJ("Offset4.obj");
   Manifold result = a + b;
   EXPECT_EQ(result.Status(), Manifold::Error::NoError);
-  ManifoldParams().intermediateChecks = intermediateChecks;
+  ManifoldParams().selfIntersectionChecks = selfIntersectionChecks;
 }
-
 #endif

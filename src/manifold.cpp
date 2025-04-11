@@ -332,11 +332,9 @@ MeshGL64 Manifold::GetMeshGL64(int normalIdx) const {
 bool Manifold::IsEmpty() const { return GetCsgLeafNode().GetImpl()->IsEmpty(); }
 /**
  * Returns the reason for an input Mesh producing an empty Manifold. This Status
- * only applies to Manifolds newly-created from an input Mesh - once they are
- * combined into a new Manifold via operations, the status reverts to NoError,
- * simply processing the problem mesh as empty. Likewise, empty meshes may still
- * show NoError, for instance if they are small enough relative to their
- * tolerance to be collapsed to nothing.
+ * will carry on through operations like NaN propogation, ensuring an errored
+ * mesh doesn't get mysteriously lost. Empty meshes may still show
+ * NoError, for instance the intersection of non-overlapping meshes.
  */
 Manifold::Error Manifold::Status() const {
   return GetCsgLeafNode().GetImpl()->status_;
@@ -405,13 +403,30 @@ Manifold Manifold::SetTolerance(double tolerance) const {
   if (tolerance > impl->tolerance_) {
     impl->tolerance_ = tolerance;
     impl->CreateFaces();
-    impl->SimplifyTopology();
-    impl->Finish();
+    impl->FlattenFaces();
   } else {
     // for reducing tolerance, we need to make sure it is still at least
     // equal to epsilon.
     impl->tolerance_ = std::max(impl->epsilon_, tolerance);
   }
+  return Manifold(impl);
+}
+
+/**
+ * Return a copy of the manifold simplified to the given tolerance, but with its
+ * actual tolerance value unchanged. If no tolerance is given, the current
+ * tolerance is used for simplification.
+ */
+Manifold Manifold::Simplify(double tolerance) const {
+  auto impl = std::make_shared<Impl>(*GetCsgLeafNode().GetImpl());
+  const double oldTolerance = impl->tolerance_;
+  if (tolerance == 0) tolerance = oldTolerance;
+  if (tolerance >= oldTolerance) {
+    impl->tolerance_ = tolerance;
+    impl->CreateFaces();
+    impl->FlattenFaces();
+  }
+  impl->tolerance_ = oldTolerance;
   return Manifold(impl);
 }
 
@@ -495,22 +510,6 @@ bool Manifold::MatchesTriNormals() const {
  */
 size_t Manifold::NumDegenerateTris() const {
   return GetCsgLeafNode().GetImpl()->NumDegenerateTris();
-}
-
-/**
- * This is a checksum-style verification of the collider, simply returning the
- * total number of edge-face bounding box overlaps between this and other.
- *
- * @param other A Manifold to overlap with.
- */
-size_t Manifold::NumOverlaps(const Manifold& other) const {
-  SparseIndices overlaps = GetCsgLeafNode().GetImpl()->EdgeCollisions(
-      *other.GetCsgLeafNode().GetImpl());
-  int num_overlaps = overlaps.size();
-
-  overlaps = other.GetCsgLeafNode().GetImpl()->EdgeCollisions(
-      *GetCsgLeafNode().GetImpl());
-  return num_overlaps + overlaps.size();
 }
 
 /**
@@ -639,12 +638,12 @@ Manifold Manifold::SetProperties(
 
   auto& triProperties = pImpl->meshRelation_.triProperties;
   if (numProp == 0) {
-    triProperties.resize(0);
-    pImpl->meshRelation_.properties.resize(0);
+    triProperties.clear();
+    pImpl->meshRelation_.properties.clear();
   } else {
     if (triProperties.size() == 0) {
       const int numTri = NumTri();
-      triProperties.resize(numTri);
+      triProperties.resize_nofill(numTri);
       for (int i = 0; i < numTri; ++i) {
         for (const int j : {0, 1, 2}) {
           triProperties[i][j] = pImpl->halfedge_[3 * i + j].startVert;
@@ -661,9 +660,9 @@ Manifold Manifold::SetProperties(
             {pImpl->meshRelation_.properties.data(), numProp,
              oldProperties.data(), oldNumProp, pImpl->vertPos_.data(),
              triProperties.data(), pImpl->halfedge_.data(),
-             propFunc == nullptr ? [](double* newProp, vec3 position,
-                                      const double* oldProp) { *newProp = 0; }
-                                 : propFunc}));
+             propFunc == nullptr
+                 ? [](double* newProp, vec3, const double*) { *newProp = 0; }
+                 : propFunc}));
   }
 
   pImpl->meshRelation_.numProp = numProp;
@@ -783,8 +782,7 @@ Manifold Manifold::SmoothOut(double minSharpAngle, double minSmoothness) const {
 Manifold Manifold::Refine(int n) const {
   auto pImpl = std::make_shared<Impl>(*GetCsgLeafNode().GetImpl());
   if (n > 1) {
-    pImpl->Refine(
-        [n](vec3 edge, vec4 tangentStart, vec4 tangentEnd) { return n - 1; });
+    pImpl->Refine([n](vec3, vec4, vec4) { return n - 1; });
   }
   return Manifold(std::make_shared<CsgLeafNode>(pImpl));
 }
@@ -802,7 +800,7 @@ Manifold Manifold::Refine(int n) const {
 Manifold Manifold::RefineToLength(double length) const {
   length = std::abs(length);
   auto pImpl = std::make_shared<Impl>(*GetCsgLeafNode().GetImpl());
-  pImpl->Refine([length](vec3 edge, vec4 tangentStart, vec4 tangentEnd) {
+  pImpl->Refine([length](vec3 edge, vec4, vec4) {
     return static_cast<int>(la::length(edge) / length);
   });
   return Manifold(std::make_shared<CsgLeafNode>(pImpl));

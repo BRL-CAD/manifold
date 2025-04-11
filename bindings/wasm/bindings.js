@@ -164,6 +164,10 @@ Module.setup = function() {
         delta, joinTypeToInt(joinType), miterLimit, circularSegments);
   };
 
+  Module.CrossSection.prototype.simplify = function(epsilon = 1e-6) {
+    return this._Simplify(epsilon);
+  };
+
   Module.CrossSection.prototype.extrude = function(
       height, nDivisions = 0, twistDegrees = 0.0, scaleTop = [1.0, 1.0],
       center = false) {
@@ -698,10 +702,11 @@ Module.setup = function() {
 
   // Top-level functions
 
-  Module.triangulate = function(polygons, epsilon = -1) {
+  Module.triangulate = function(polygons, epsilon = -1, allowConvex = true) {
     const polygonsVec = polygons2vec(polygons);
     const result = fromVec(
-        Module._Triangulate(polygonsVec, epsilon), (x) => [x[0], x[1], x[2]]);
+        Module._Triangulate(polygonsVec, epsilon, allowConvex),
+        (x) => [x[0], x[1], x[2]]);
     disposePolygons(polygonsVec);
     return result;
   };

@@ -113,7 +113,7 @@ class Partition {
     }
     const int offset = interiorOffset - newVerts.size();
     size_t old = newVerts.size();
-    newVerts.resize(vertBary.size());
+    newVerts.resize_nofill(vertBary.size());
     std::iota(newVerts.begin() + old, newVerts.end(), old + offset);
 
     const int numTri = triVert.size();
@@ -535,7 +535,7 @@ Vec<Barycentric> Manifold::Impl::Subdivide(
           auto Added = [&edgeAdded, &half2Edge, thisAdded, this](int hIdx) {
             int longest = 0;
             int total = 0;
-            for (int j : {0, 1, 2}) {
+            for (int _ : {0, 1, 2}) {
               const int added = edgeAdded[half2Edge[hIdx]];
               longest = la::max(longest, added);
               total += added;
@@ -586,7 +586,7 @@ Vec<Barycentric> Manifold::Impl::Subdivide(
 
   std::vector<Partition> subTris(numTri);
   for_each_n(policy, countAt(0), numTri,
-             [this, &subTris, &half2Edge, &edgeAdded, &faceHalfedges](int tri) {
+             [&subTris, &half2Edge, &edgeAdded, &faceHalfedges](int tri) {
                const ivec4 halfedges = faceHalfedges[tri];
                ivec4 divisions(0);
                for (const int i : {0, 1, 2, 3}) {
@@ -684,7 +684,7 @@ Vec<Barycentric> Manifold::Impl::Subdivide(
              });
   vertPos_ = newVertPos;
 
-  faceNormal_.resize(0);
+  faceNormal_.clear();
 
   if (meshRelation_.numProp > 0) {
     const int numPropVert = NumPropVert();

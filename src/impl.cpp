@@ -26,11 +26,6 @@
 #include "./parallel.h"
 #include "./svd.h"
 
-#if defined(MANIFOLD_EXPORT) || defined(MANIFOLD_DEBUG)
-#include <iomanip>
-#include <iostream>
-#endif
-
 namespace {
 using namespace manifold;
 
@@ -720,7 +715,6 @@ std::ostream& operator<<(std::ostream& stream, const Manifold::Impl& impl) {
  * Write function.
  */
 Manifold Manifold::ReadOBJ(std::istream& stream) {
-#ifdef MANIFOLD_DEBUG
   if (!stream.good()) return Invalid();
 
   MeshGL64 mesh;
@@ -782,9 +776,6 @@ Manifold Manifold::ReadOBJ(std::istream& stream) {
   auto m = std::make_shared<Manifold::Impl>(mesh);
   if (epsilon) m->SetEpsilon(*epsilon);
   return Manifold(m);
-#else
-  return Invalid();
-#endif
 }
 
 /**
@@ -794,15 +785,10 @@ Manifold Manifold::ReadOBJ(std::istream& stream) {
  * by WriteOBJ should be read back in with ReadOBJ.
  */
 bool Manifold::WriteOBJ(std::ostream& stream) const {
-#ifdef MANIFOLD_DEBUG
   if (!stream.good()) return false;
   stream << *this->GetCsgLeafNode().GetImpl();
   return true;
-#else
-  return false;
-#endif
 }
-
 #endif
 
 }  // namespace manifold

@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #pragma once
+#include <cstdint>  // uint32_t, uint64_t
 #include <functional>
 #include <memory>  // needed for shared_ptr
 
@@ -68,7 +69,7 @@ class CsgLeafNode;
  *
  * If you don't have merge vectors, you can create them with the Merge() method,
  * however this will fail if the mesh is not already manifold within the set
- * tolerance. For maximum reliablility, always store the merge vectors with the
+ * tolerance. For maximum reliability, always store the merge vectors with the
  * mesh, e.g. using the EXT_mesh_manifold extension in glTF.
  *
  * You can have any number of arbitrary floating-point properties per vertex,
@@ -149,10 +150,11 @@ struct MeshGLP {
   /// This matrix is stored in column-major order and the length of the overall
   /// vector is 12 * runOriginalID.size().
   std::vector<Precision> runTransform;
-  /// Optional: Length NumTri, contains the source face ID this
-  /// triangle comes from. When auto-generated, this ID will be a triangle index
-  /// into the original mesh. This index/ID is purely for external use (e.g.
-  /// recreating polygonal faces) and will not affect Manifold's algorithms.
+  /// Optional: Length NumTri, contains the source face ID this triangle comes
+  /// from. Simplification will maintain all edges between triangles with
+  /// different faceIDs. Input faceIDs will be maintained to the outputs, but if
+  /// none are given, they will be filled in with Manifold's coplanar face
+  /// calculation based on mesh tolerance.
   std::vector<I> faceID;
   /// Optional: The X-Y-Z-W weighted tangent vectors for smooth Refine(). If
   /// non-empty, must be exactly four times as long as Mesh.triVerts. Indexed

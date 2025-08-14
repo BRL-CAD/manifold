@@ -18,11 +18,11 @@
 #include <map>
 #include <set>
 
-#include "./parallel.h"
-#include "./tree2d.h"
-#include "./utils.h"
 #include "manifold/manifold.h"
 #include "manifold/optional_assert.h"
+#include "parallel.h"
+#include "tree2d.h"
+#include "utils.h"
 
 #ifdef MANIFOLD_DEBUG
 #include <iomanip>
@@ -553,7 +553,8 @@ class EarClip {
 
   // Apply func to each un-clipped vert in a polygon and return an un-clipped
   // vert.
-  VertItrC Loop(VertItr first, std::function<void(VertItr)> func) const {
+  template <typename F>
+  VertItrC Loop(VertItr first, F func) const {
     VertItr v = first;
     do {
       if (Clipped(v)) {

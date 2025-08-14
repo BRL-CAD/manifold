@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "./conv.h"
+#include "conv.h"
 
 #include <vector>
 
@@ -206,6 +206,9 @@ CrossSection::JoinType from_c(ManifoldJoinType join_type) {
       break;
     case MANIFOLD_JOIN_TYPE_MITER:
       jt = CrossSection::JoinType::Miter;
+      break;
+    case MANIFOLD_JOIN_TYPE_BEVEL:
+      jt = CrossSection::JoinType::Bevel;
       break;
   };
   return jt;

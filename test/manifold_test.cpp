@@ -41,7 +41,7 @@ int NumUnique(const std::vector<T>& in) {
  * produces a consistent result.
  */
 TEST(Manifold, GetMeshGL) {
-  Manifold manifold = Manifold::Sphere(1);
+  Manifold manifold = Manifold::Sphere(0.01);
   auto mesh_out = manifold.GetMeshGL();
   Manifold manifold2(mesh_out);
   auto mesh_out2 = manifold2.GetMeshGL();
@@ -103,6 +103,14 @@ TEST(Manifold, ValidInput) {
   EXPECT_EQ(tet.Status(), Manifold::Error::NoError);
 }
 
+TEST(Manifold, ValidInputOneRunIndex) {
+  MeshGL emptyMesh;
+  emptyMesh.runIndex = {0};
+  Manifold empty(emptyMesh);
+  EXPECT_TRUE(empty.IsEmpty());
+  EXPECT_EQ(empty.Status(), Manifold::Error::NoError);
+}
+
 TEST(Manifold, InvalidInput1) {
   MeshGL in = TetGL();
   in.vertProperties[2 * 3 + 1] = NAN;
@@ -155,6 +163,14 @@ TEST(Manifold, InvalidInput6) {
   EXPECT_EQ(tet.Status(), Manifold::Error::VertexOutOfBounds);
 }
 
+TEST(Manifold, InvalidInput7) {
+  MeshGL cube = CubeUV();
+  cube.runIndex = {0, 1, static_cast<uint32_t>(cube.triVerts.size())};
+  Manifold tet(cube);
+  EXPECT_TRUE(tet.IsEmpty());
+  EXPECT_EQ(tet.Status(), Manifold::Error::RunIndexWrongLength);
+}
+
 TEST(Manifold, OppositeFace) {
   MeshGL gl;
   gl.vertProperties = {
@@ -200,7 +216,7 @@ TEST(Manifold, OppositeFace) {
   };
   Manifold man(gl);
   EXPECT_EQ(man.Status(), Manifold::Error::NoError);
-  EXPECT_EQ(man.NumVert(), 8);
+  EXPECT_EQ(man.NumVert(), 12);
   EXPECT_FLOAT_EQ(man.Volume(), 2);
 }
 
@@ -549,11 +565,36 @@ TEST(Manifold, SliceEmptyObject) {
   EXPECT_TRUE(empty.IsEmpty());
   CrossSection bottom = empty.Slice();
 }
+
+TEST(Manifold, Simplify) {
+  Polygons polyCircle =
+      CrossSection::Circle(1, 20).Translate({10, 0}).ToPolygons();
+  Manifold torus = Manifold::Revolve(polyCircle, 100);
+  Manifold simplified = torus.Simplify(0.4);
+  EXPECT_NEAR(torus.Volume(), simplified.Volume(), 20);
+  EXPECT_NEAR(torus.SurfaceArea(), simplified.SurfaceArea(), 10);
+
+#ifdef MANIFOLD_EXPORT
+  if (options.exportModels) ExportMesh("torus.glb", simplified.GetMeshGL(), {});
+#endif
+}
 #endif
 
+TEST(Manifold, MeshID) {
+  const Manifold cube = Manifold::Cube();
+  MeshGL cubeGL = cube.GetMeshGL();
+  cubeGL.runIndex.clear();
+  cubeGL.runOriginalID.clear();
+  Manifold cube1 = Manifold(cubeGL);
+  Manifold cube2 = Manifold(cubeGL);
+  EXPECT_NE(cube1.GetMeshGL().runOriginalID[0],
+            cube2.GetMeshGL().runOriginalID[0]);
+}
+
 TEST(Manifold, MeshRelation) {
-  MeshGL gyroidMeshGL = WithPositionColors(Gyroid()).AsOriginal().GetMeshGL();
-  Manifold gyroid(gyroidMeshGL);
+  Manifold gyroid = WithPositionColors(Gyroid());
+  MeshGL gyroidMeshGL = gyroid.GetMeshGL();
+  gyroid = gyroid.Simplify();
 
 #ifdef MANIFOLD_EXPORT
   ExportOptions opt;
@@ -703,7 +744,8 @@ TEST(Manifold, MergeEmpty) {
   EXPECT_TRUE(shape.Merge());
   Manifold man(shape);
   EXPECT_EQ(man.Status(), Manifold::Error::NoError);
-  EXPECT_TRUE(man.IsEmpty());
+  EXPECT_EQ(man.NumTri(), 4);
+  EXPECT_TRUE(man.Simplify().IsEmpty());
 }
 
 TEST(Manifold, PinchedVert) {
@@ -741,7 +783,7 @@ TEST(Manifold, FaceIDRoundTrip) {
   const Manifold cube = Manifold::Cube();
   ASSERT_GE(cube.OriginalID(), 0);
   MeshGL inGL = cube.GetMeshGL();
-  ASSERT_EQ(NumUnique(inGL.faceID), 12);
+  ASSERT_EQ(NumUnique(inGL.faceID), 6);
   inGL.faceID = {3, 3, 3, 3, 3, 3, 5, 5, 5, 5, 5, 5};
 
   const Manifold cube2(inGL);

@@ -18,11 +18,11 @@
 
 #include <algorithm>
 
-#include "./boolean3.h"
-#include "./csg_tree.h"
-#include "./impl.h"
-#include "./mesh_fixes.h"
-#include "./parallel.h"
+#include "boolean3.h"
+#include "csg_tree.h"
+#include "impl.h"
+#include "mesh_fixes.h"
+#include "parallel.h"
 
 namespace {
 using namespace manifold;
@@ -197,8 +197,7 @@ std::shared_ptr<CsgLeafNode> CsgLeafNode::Compose(
     const int numProp = node->pImpl_->NumProp();
     numPropOut = std::max(numPropOut, numProp);
     numPropVert +=
-        numProp == 0 ? 1
-                     : node->pImpl_->meshRelation_.properties.size() / numProp;
+        numProp == 0 ? 1 : node->pImpl_->properties_.size() / numProp;
   }
 
   Manifold::Impl combined;
@@ -210,9 +209,8 @@ std::shared_ptr<CsgLeafNode> CsgLeafNode::Compose(
   combined.halfedgeTangent_.resize(2 * numEdge);
   combined.meshRelation_.triRef.resize_nofill(numTri);
   if (numPropOut > 0) {
-    combined.meshRelation_.numProp = numPropOut;
-    combined.meshRelation_.properties.resize(numPropOut * numPropVert, 0);
-    combined.meshRelation_.triProperties.resize_nofill(numTri);
+    combined.numProp_ = numPropOut;
+    combined.properties_.resize(numPropOut * numPropVert, 0);
   }
   auto policy = autoPolicy(numTri);
 
@@ -232,43 +230,29 @@ std::shared_ptr<CsgLeafNode> CsgLeafNode::Compose(
              combined.halfedgeTangent_.begin() + edgeIndices[i]);
         const int nextVert = vertIndices[i];
         const int nextEdge = edgeIndices[i];
+        const int nextProp = propVertIndices[i];
         transform(node->pImpl_->halfedge_.begin(),
                   node->pImpl_->halfedge_.end(),
                   combined.halfedge_.begin() + edgeIndices[i],
-                  [nextVert, nextEdge](Halfedge edge) {
+                  [nextVert, nextEdge, nextProp](Halfedge edge) {
                     edge.startVert += nextVert;
                     edge.endVert += nextVert;
                     edge.pairedHalfedge += nextEdge;
+                    edge.propVert += nextProp;
                     return edge;
                   });
 
-        if (numPropOut > 0) {
-          auto start =
-              combined.meshRelation_.triProperties.begin() + triIndices[i];
-          if (node->pImpl_->NumProp() > 0) {
-            auto& triProp = node->pImpl_->meshRelation_.triProperties;
-            const int nextProp = propVertIndices[i];
-            transform(triProp.begin(), triProp.end(), start,
-                      [nextProp](ivec3 tri) {
-                        tri += nextProp;
-                        return tri;
-                      });
-
-            const int numProp = node->pImpl_->NumProp();
-            auto& oldProp = node->pImpl_->meshRelation_.properties;
-            auto& newProp = combined.meshRelation_.properties;
-            for (int p = 0; p < numProp; ++p) {
-              auto oldRange =
-                  StridedRange(oldProp.cbegin() + p, oldProp.cend(), numProp);
-              auto newRange = StridedRange(
-                  newProp.begin() + numPropOut * propVertIndices[i] + p,
-                  newProp.end(), numPropOut);
-              copy(oldRange.begin(), oldRange.end(), newRange.begin());
-            }
-          } else {
-            // point all triangles at single new property of zeros.
-            fill(start, start + node->pImpl_->NumTri(),
-                 ivec3(propVertIndices[i]));
+        if (node->pImpl_->NumProp() > 0) {
+          const int numProp = node->pImpl_->NumProp();
+          auto& oldProp = node->pImpl_->properties_;
+          auto& newProp = combined.properties_;
+          for (int p = 0; p < numProp; ++p) {
+            auto oldRange =
+                StridedRange(oldProp.cbegin() + p, oldProp.cend(), numProp);
+            auto newRange = StridedRange(
+                newProp.begin() + numPropOut * propVertIndices[i] + p,
+                newProp.end(), numPropOut);
+            copy(oldRange.begin(), oldRange.end(), newRange.begin());
           }
         }
 
@@ -329,7 +313,7 @@ std::shared_ptr<CsgLeafNode> CsgLeafNode::Compose(
   }
 
   // required to remove parts that are smaller than the tolerance
-  combined.SimplifyTopology();
+  combined.RemoveDegenerates();
   combined.Finish();
   combined.IncrementMeshIDs();
   return ImplToLeaf(std::move(combined));
@@ -358,7 +342,9 @@ std::shared_ptr<CsgLeafNode> BatchBoolean(
   std::vector<std::shared_ptr<CsgLeafNode>> tmp;
 #if MANIFOLD_PAR == 1
   tbb::task_group group;
-  std::mutex mutex;
+  // make sure the order of result is deterministic
+  std::vector<std::shared_ptr<CsgLeafNode>> parallelTmp;
+  for (int i = 0; i < 4; i++) parallelTmp.push_back(nullptr);
 #endif
   while (results.size() > 1) {
     for (size_t i = 0; i < 4 && results.size() > 1; i++) {
@@ -369,11 +355,8 @@ std::shared_ptr<CsgLeafNode> BatchBoolean(
       auto b = std::move(results.back());
       results.pop_back();
 #if MANIFOLD_PAR == 1
-      group.run([&, a, b]() {
-        auto result = SimpleBoolean(*a->GetImpl(), *b->GetImpl(), operation);
-        mutex.lock();
-        tmp.push_back(result);
-        mutex.unlock();
+      group.run([&, i, a, b]() {
+        parallelTmp[i] = SimpleBoolean(*a->GetImpl(), *b->GetImpl(), operation);
       });
 #else
       auto result = SimpleBoolean(*a->GetImpl(), *b->GetImpl(), operation);
@@ -382,6 +365,8 @@ std::shared_ptr<CsgLeafNode> BatchBoolean(
     }
 #if MANIFOLD_PAR == 1
     group.wait();
+    for (int i = 0; i < 4 && parallelTmp[i]; i++)
+      tmp.emplace_back(std::move(parallelTmp[i]));
 #endif
     for (auto result : tmp) {
       results.push_back(result);

@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include <optional>
+#include <string>
 
 #include "autogen_docstrings.inl"  // generated in build folder
 #include "manifold/cross_section.h"
@@ -203,16 +204,16 @@ NB_MODULE(manifold3d, m) {
   m.doc() = "Python binding for the Manifold library.";
 
   m.def("set_min_circular_angle", Quality::SetMinCircularAngle,
-        nb::arg("angle"), set_min_circular_angle__angle);
+        nb::arg("angle"), quality__set_min_circular_angle__angle);
 
   m.def("set_min_circular_edge_length", Quality::SetMinCircularEdgeLength,
-        nb::arg("length"), set_min_circular_edge_length__length);
+        nb::arg("length"), quality__set_min_circular_edge_length__length);
 
   m.def("set_circular_segments", Quality::SetCircularSegments,
-        nb::arg("number"), set_circular_segments__number);
+        nb::arg("number"), quality__set_circular_segments__number);
 
   m.def("get_circular_segments", Quality::GetCircularSegments,
-        nb::arg("radius"), get_circular_segments__radius);
+        nb::arg("radius"), quality__get_circular_segments__radius);
 
   m.def("triangulate", &Triangulate, nb::arg("polygons"),
         nb::arg("epsilon") = -1, nb::arg("allow_convex") = true,
@@ -355,6 +356,7 @@ NB_MODULE(manifold3d, m) {
       .def("get_tolerance", &Manifold::GetTolerance, manifold__get_tolerance)
       .def("set_tolerance", &Manifold::SetTolerance,
            manifold__set_tolerance__tolerance)
+      .def("simplify", &Manifold::Simplify, manifold__simplify__tolerance)
       .def("as_original", &Manifold::AsOriginal, manifold__as_original)
       .def("is_empty", &Manifold::IsEmpty, manifold__is_empty)
       .def("decompose", &Manifold::Decompose, manifold__decompose)
@@ -727,18 +729,28 @@ NB_MODULE(manifold3d, m) {
              "Squaring is applied uniformly at all joins where the internal "
              "join angle is less that 90 degrees. The squared edge will be at "
              "exactly the offset distance from the join vertex.")
-      .value(
-          "Round", CrossSection::JoinType::Round,
-          "Rounding is applied to all joins that have convex external angles, "
-          "and it maintains the exact offset distance from the join vertex.")
+      .value("Round", CrossSection::JoinType::Round,
+             "Rounding is applied to all joins that have convex external "
+             "angles, and it maintains the exact offset distance from the join "
+             "vertex.")
       .value(
           "Miter", CrossSection::JoinType::Miter,
-          "There's a necessary limit to mitered joins (to avoid narrow angled "
-          "joins producing excessively long and narrow "
+          "There's a necessary limit to mitered joins (to avoid narrow "
+          "angled joins producing excessively long and narrow "
           "[spikes](http://www.angusj.com/clipper2/Docs/Units/Clipper.Offset/"
-          "Classes/ClipperOffset/Properties/MiterLimit.htm)). So where mitered "
-          "joins would exceed a given maximum miter distance (relative to the "
-          "offset distance), these are 'squared' instead.");
+          "Classes/ClipperOffset/Properties/MiterLimit.htm)). So where "
+          "mitered joins would exceed a given maximum miter distance "
+          "(relative to the offset distance), these are 'squared' instead.")
+      .value("Bevel", CrossSection::JoinType::Bevel,
+             "Bevelled joins are similar to 'squared' joins except that "
+             "squaring won't occur at a fixed distance. While bevelled joins "
+             "may not be as pretty as squared joins, bevelling is much easier "
+             "(ie faster) than squaring. And perhaps this is why bevelling "
+             "rather than squaring is preferred in numerous graphics display "
+             "formats (including [SVG](https://developer.mozilla.org/en-US/"
+             "docs/Web/SVG/Attribute/stroke-linejoin) and [PDF]"
+             "(https://helpx.adobe.com/indesign/using/"
+             "applying-line-stroke-settings.html) document formats).");
 
   nb::enum_<OpType>(m, "OpType", "Operation types for batch_boolean")
       .value("Add", OpType::Add)
@@ -817,8 +829,8 @@ NB_MODULE(manifold3d, m) {
            cross_section__simplify__epsilon)
       .def(
           "offset", &CrossSection::Offset, nb::arg("delta"),
-          nb::arg("join_type"), nb::arg("miter_limit") = 2.0,
-          nb::arg("circular_segments") = 0,
+          nb::arg("join_type") = CrossSection::JoinType::Round,
+          nb::arg("miter_limit") = 2.0, nb::arg("circular_segments") = 0,
           cross_section__offset__delta__jointype__miter_limit__circular_segments)
       .def(nb::self + nb::self, cross_section__operator_plus__q)
       .def(nb::self - nb::self, cross_section__operator_minus__q)

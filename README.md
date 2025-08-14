@@ -15,13 +15,14 @@ Here is an incomplete list of our users, whose integrations may be anywhere from
 
 | | | |
 | --- | --- | --- |
-| [OpenSCAD](https://openscad.org/) | [IFCjs](https://ifcjs.github.io/info/) | [Dactyl Web Configurator](https://github.com/rianadon/dactyl-configurator) |
+| [OpenSCAD](https://openscad.org/) | [Blender](https://www.blender.org/) | [IFCjs](https://ifcjs.github.io/info/) |
 | [Nomad Sculpt](https://apps.apple.com/us/app/id1519508653?mt=8&platform=ipad) | [Grid.Space](https://grid.space/) | [badcad](https://github.com/wrongbad/badcad) |
 | [Godot Engine](https://godotengine.org/) | [OCADml](https://github.com/OCADml/OManifold) | [Flitter](https://flitter.readthedocs.io/en/latest/) |
 | [BRL-CAD](https://brlcad.org/) | [PolygonJS](https://polygonjs.com/) | [Spherene](https://spherene.ch/) |
 | [Babylon.js](https://doc.babylonjs.com/features/featuresDeepDive/mesh/mergeMeshes#merging-meshes-with-constructive-solid-geometry) | [trimesh](https://trimesh.org/) | [Gypsum](https://github.com/playkostudios/gypsum) |
 | [Valence 3D](https://apps.apple.com/us/app/valence-3d/id6450967410?mt=8&platform=ipad) | [bitbybit.dev](https://bitbybit.dev) | [PythonOpenSCAD](https://github.com/owebeeone/pythonopenscad) |
-| [Conversation](https://james-bern.github.io/conversation.html) | [AnchorSCAD](https://github.com/owebeeone/anchorscad-core) | | |
+| [Conversation](https://james-bern.github.io/conversation.html) | [AnchorSCAD](https://github.com/owebeeone/anchorscad-core) | [Dactyl Web Configurator](https://github.com/rianadon/dactyl-configurator) |
+| [Arcol](https://arcol.io) | [Bento3D](https://bento3d.design) |  [Cadova](https://github.com/tomasf/Cadova)  |
 
 ### Bindings & Packages
 
@@ -97,7 +98,7 @@ cd manifold
 mkdir build
 cd build
 cmake -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON .. && make
-test/manifold_test
+make test
 ```
 
 CMake flags (usage e.g. `-DMANIFOLD_DEBUG=ON`):
@@ -167,7 +168,8 @@ cd manifold
 mkdir buildWASM
 cd buildWASM
 emcmake cmake -DCMAKE_BUILD_TYPE=MinSizeRel .. && emmake make
-node test/manifold_test.js
+cd test
+node ./manifold_test.js
 ```
 
 ### Python
@@ -222,6 +224,15 @@ patch from the GitHub action log.
 There is now basic support for the [Tracy profiler](https://github.com/wolfpld/tracy) for our tests.
 To enable tracing, compile with `-DTRACY_ENABLE=on` cmake option, and run the test with Tracy server running.
 To enable memory profiling in addition to tracing, compile with `-DTRACY_MEMORY_USAGE=ON` in addition to `-DTRACY_ENABLE=ON`.
+
+### Fuzzing
+
+To build with fuzzing support, you should set the following with CMake:
+
+- Enable fuzzing by setting `-DMANIFOLD_FUZZ=ON`
+- Disable python bindings by setting `-DMANIFOLD_PYBIND=OFF`
+- Use `clang` for compiling by setting `-DCMAKE_CXX_COMPILER=clang++`
+- You may need to disable parallelization by setting `-DMANIFOLD_PAR=OFF`, and set `ASAN_OPTIONS=detect_container_overflow=0` when building the binary on MacOS.
 
 ## About the author
 
